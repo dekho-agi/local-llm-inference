@@ -611,7 +611,7 @@ def gen_list():
     t = Table(box=None, pad_edge=False)
     t.add_column("class")
     t.add_column("what it does")
-    t.add_column("runtime ready")
+    t.add_column("runtime")
     t.add_column("models cached")
     for name, r in genmod.SPECS.items():
         have = [m for m in ms if m.model_class == name and m.cached]
@@ -623,7 +623,11 @@ def gen_list():
             f"{len(have)}/{len(want)}" + (f"  [dim]{have[0].label}[/]" if have else ""),
         )
     console.print(t)
-    console.print("\n[dim]llmctl gen doctor · llmctl gen setup · llmctl gen <class> 'prompt'[/]")
+    console.print(
+        "\n[dim]'runtime' means the entrypoint imports — not that a "
+        "given model's architecture is supported. Confirm with a real run.[/]"
+    )
+    console.print("[dim]llmctl gen doctor · llmctl gen setup · llmctl gen run <class> 'prompt'[/]")
 
 
 @gen_app.command("doctor")
@@ -643,7 +647,7 @@ def gen_doctor():
     for name, info in st["runners"].items():
         ok = info["available"]
         missing += 0 if ok else 1
-        t.add_row(name, info["entry"], "[green]ok[/]" if ok else "[red]missing[/]")
+        t.add_row(name, info["entry"], "[green]importable[/]" if ok else "[red]missing[/]")
     console.print(t)
     if missing:
         console.print(f"\n[yellow]{missing} runner(s) unavailable[/] — llmctl gen setup")

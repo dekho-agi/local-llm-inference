@@ -94,11 +94,25 @@ class Spec:
         return [str(py), "-m", self.module], f"python -m {self.module}"
 
     def available(self, override: str = "") -> bool:
+        """Entrypoint is present and importable.
+
+        This does NOT mean a given model will load: a runtime can be installed
+        and still lack that model's architecture (mlx-vlm is importable but has
+        no Wan/LTX module). Use `llmctl gen run --dry-run` and then a real run
+        to confirm a model actually works.
+        """
         try:
-            self.resolve_entry(override)
-            return True
+            cmd, _ = self.resolve_entry(override)
         except RuntimeError:
             return False
+        if self.module:
+            py = gen_python()
+            if not py:
+                return False
+            root = self.module.split(".")[0]
+            r = subprocess.run([str(py), "-c", f"import {root}"], capture_output=True)
+            return r.returncode == 0
+        return True
 
 
 # Flag names below were read from each runtime's --help, not guessed.
