@@ -3,6 +3,12 @@
 Everything here was run on this machine with `HF_HUB_OFFLINE=1`. No step is
 aspirational.
 
+**Validated cold** on 2026-09-18: runtime state wiped, then every step below
+run from scratch offline. `verify` passed on all 17 cached models, the 80B
+started in seconds at 51.3 GB of a 105.4 GB budget, opencode registered the
+provider automatically, and an agentic edit produced correct working code in
+~30 s.
+
 ---
 
 ## Before you lose network

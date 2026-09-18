@@ -1,6 +1,7 @@
 """llmctl CLI. typer for commands/args, rich for tables and prompts."""
 
 import json
+import os
 import subprocess
 from dataclasses import replace
 
@@ -197,6 +198,10 @@ def start(
 ):
     """Start a server. With no model, pick one from a list."""
     h = hostmod.detect()
+    # Honour MODEL from the environment: the shell scripts this replaced used
+    # it, the .env.example files still document it, and a scripted start
+    # should not fall through to an interactive picker.
+    model = model or os.environ.get("MODEL") or None
     if model:
         m = catalog.find(model)
         if not m:
@@ -514,7 +519,13 @@ def verify(
             bad += 1
             continue
         snap = snaps[-1]
+        # Diffusion repos (mflux) nest weights per component —
+        # transformer/, text_encoder/, vae/ — so a flat glob finds nothing and
+        # reported working models as "no safetensors".
         shards = sorted(glob.glob(snap + "*.safetensors"))
+        nested = not shards
+        if nested:
+            shards = sorted(glob.glob(snap + "**/*.safetensors", recursive=True))
         idx = glob.glob(snap + "model.safetensors.index.json")
         m = catalog.scan_cache().get(repo.repo_id)
         parser = (m.tool_parser if m else None) or "[dim]none[/]"
@@ -537,6 +548,21 @@ def verify(
 
         if not shards:
             t.add_row(repo.repo_id, "0", parser, "[yellow]no safetensors[/]")
+            continue
+        if nested:
+            # No single index to compare against; confirm each component
+            # directory has readable weights.
+            comps = sorted({P(f).parent.name for f in shards})
+            unreadable = [f for f in shards if not P(f).resolve().exists()]
+            t.add_row(
+                repo.repo_id,
+                str(len(shards)),
+                parser,
+                f"[green]ok[/] [dim]({len(comps)} components: {', '.join(comps)})[/]"
+                if not unreadable
+                else f"[red]{len(unreadable)} shard(s) unreadable[/]",
+            )
+            bad += bool(unreadable)
             continue
         if not idx:
             t.add_row(repo.repo_id, str(len(shards)), parser, "[green]ok (no index)[/]")
