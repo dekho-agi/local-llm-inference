@@ -2079,3 +2079,31 @@ Model cards and upstream documentation:
 Vendor announcements:
 - [BFL — FLUX.2](https://bfl.ai/blog/flux-2) (2025-11-25) · [FLUX.2 klein](https://bfl.ai/blog/flux2-klein-towards-interactive-visual-intelligence) (2026-01-15) · [FLUX.1 Kontext dev](https://bfl.ai/announcements/flux-1-kontext-dev) (2025-06-26) · [FLUX 3](https://bfl.ai/blog/flux-3) (2026-07-23, weights not released)
 - [Draw Things — Metal Quantized Attention, M5 Max Int8](https://releases.drawthings.ai/p/metal-quantized-attention-pulling) (2026-04-01) — the ~110 TFLOPs / 3.3×-over-M4-Max figures
+
+
+---
+
+## Runtime installation traps (verified 2026-09-18)
+
+Found by installing and running these, not by reading docs.
+
+| Trap | Detail |
+|---|---|
+| `mlx-video` on PyPI is the wrong package | PyPI `mlx-video` 0.1.0 contains only `_io.py` and `_transforms.py` — video I/O helpers, no generation. The runtime the Wan card names is `git+https://github.com/Blaizzy/mlx-video.git`, which happens to use the same distribution name. |
+| `mlx-gen` downgrades mlx | It pins `mlx<0.32.0` and pulls `mlx-metal==0.31.2`, downgrading from 0.32.2. That risks breaking mflux / mlx-vlm / mlx-audio, which all work on 0.32.2. Keep it out of the shared env; give it its own if you need it. |
+| mlx-vlm cannot run Wan or LTX | Its model directory has only `video_depth_anything`. Routing video at `mlx_vlm.generate` fails at load, even though the import succeeds. |
+| Kokoro's dependencies are undeclared | mlx-audio installs none of them, and the error says "pip install misaki" whichever submodule is missing. The working set is `misaki + num2words + phonemizer + espeakng_loader` — the English path imports `misaki.espeak`, which needs `espeakng_loader`. `misaki[en]` pins a spacy that fails to build. |
+| `ideogram-4-mflux-q8` is gated | `gated: auto`; the pull fails with "Access denied. This repository requires approval." One click on the model page unblocks it. |
+| mflux entrypoint depends on the model | `mflux-generate-krea2`, `-ideogram4`, `-flux2`, `-qwen-edit` are separate console scripts. There is no single `mflux-generate` that covers them. |
+
+Measured on this M5 Max while verifying:
+
+| Class | Model | Result |
+|---|---|---|
+| image | FLUX.2-Klein-4B-6bit | 1024x1024, 4 steps, **11 s** total, 13.34 GB peak |
+| image | krea-2-turbo-mflux-bf16 | 1024x1024, 8 steps, **46 s** total, **41.73 GB peak** — visibly better composition and atmosphere; both sit well under the ~100 GiB rule |
+| music | MiniMax-Music3-mxfp8 | 21.2 s of **44.1 kHz** stereo in 47 s (settles the 32-vs-44.1 question) |
+| tts | Kokoro-82M-bf16 | 3.2 s of 24 kHz mono |
+| stt | parakeet-tdt-0.6b-v3 | transcribed the Kokoro output back verbatim |
+| vlm | GLM-OCR-8bit | read text out of a rendered image |
+| omni | MiniCPM-o-4_5-4bit | described the FLUX-generated image correctly |
