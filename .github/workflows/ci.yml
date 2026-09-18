@@ -1,0 +1,87 @@
+name: ci
+
+on:
+  push:
+    branches: ["main", "apple-m-series-**"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    # Unit tests deliberately avoid mlx, which is Apple-silicon only, so they
+    # run on the free Linux runners. Anything needing Metal or real weights is
+    # an integration check run on the machine itself (llmctl verify / smoke-test).
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install test deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[test]"
+
+      - name: Run tests
+        run: pytest -v
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: pip install ruff
+      - name: Lint
+        run: ruff check llmctl tests
+      - name: Format check
+        run: ruff format --check llmctl tests
+
+  shell:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: shellcheck
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+          # SC1091: sourced files are resolved at runtime on the target machine
+          find . -name '*.sh' -not -path './.git/*' -print0 \
+            | xargs -0 shellcheck -S warning -e SC1091
+      - name: bash syntax
+        run: find . -name '*.sh' -not -path './.git/*' -exec bash -n {} +
+
+  plugin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+      - name: Check the opencode plugin parses as an ES module
+        run: |
+          cp opencode/plugins/dekho-local-inference.js /tmp/plugin.mjs
+          node --check /tmp/plugin.mjs
+
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: No credentials or PII in the tree
+        run: |
+          set -e
+          fail=0
+          check() {
+            if git grep -nIE "$1" -- . ; then echo "^^ $2"; fail=1; fi
+          }
+          check '(sk-[A-Za-z0-9_-]{16,}|hf_[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16})' 'credential-shaped string'
+          check '-----BEGIN [A-Z ]*PRIVATE KEY' 'private key'
+          check '@(gmail|outlook|yahoo|hotmail)\.com' 'personal email'
+          exit $fail

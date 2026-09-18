@@ -1,0 +1,17 @@
+.env
+**/.env
+# client code moved to separate local-llm-client repository
+client/
+
+# never commit HF tokens if one is ever copied into the tree
+hugging-face-token.txt
+**/hugging-face-token.txt
+
+# python build / test artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/

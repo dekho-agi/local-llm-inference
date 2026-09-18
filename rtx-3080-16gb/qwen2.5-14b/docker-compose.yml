@@ -1,0 +1,45 @@
+services:
+  qwen25-14b:
+    image: vllm/vllm-openai:latest
+    ipc: host
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    ports:
+      - "${PORT:-8000}:8000"
+    volumes:
+      - huggingface_cache:/root/.cache/huggingface
+    environment:
+      - HUGGING_FACE_HUB_TOKEN=${HF_TOKEN}
+    command: >
+      --model Qwen/Qwen2.5-14B-Instruct-AWQ
+      --quantization awq_marlin
+      --dtype half
+      --enforce-eager
+      --max-model-len ${MAX_MODEL_LEN:-32768}
+      --gpu-memory-utilization ${GPU_MEMORY_UTILIZATION:-0.90}
+      --enable-auto-tool-choice
+      --tool-call-parser hermes
+      --host 0.0.0.0
+      --port 8000
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 300s
+    restart: unless-stopped
+
+volumes:
+  huggingface_cache:
+
+# OpenAI-compatible endpoint: http://localhost:8000/v1/chat/completions
+# Model: Qwen/Qwen2.5-14B-Instruct-AWQ (AWQ 4-bit ~8 GB weights)
+#
+# HARDWARE REQUIREMENTS:
+#   Ampere SM 8.6+ with 16 GB VRAM.
+#   ~8 GB for weights leaves ~8 GB for KV cache — supports 32K context.

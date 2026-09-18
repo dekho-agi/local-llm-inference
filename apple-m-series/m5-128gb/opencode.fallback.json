@@ -1,0 +1,71 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "mlx": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "MLX (local M5 Max)",
+      "options": {
+        "baseURL": "http://127.0.0.1:8000/v1",
+        "apiKey": "not-needed"
+      },
+      "models": {
+        "mlx-community/Qwen3-Coder-Next-4bit": {
+          "name": "Qwen3-Coder-Next 4bit (local, daily driver)",
+          "family": "qwen3-coder",
+          "tool_call": true,
+          "limit": {
+            "context": 262144,
+            "output": 32768
+          }
+        },
+        "mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit": {
+          "name": "Qwen3-Coder 30B-A3B 4bit (local, fast)",
+          "family": "qwen3-coder",
+          "tool_call": true,
+          "limit": {
+            "context": 262144,
+            "output": 32768
+          }
+        },
+        "mlx-community/GLM-4.7-Flash-4bit": {
+          "name": "GLM-4.7-Flash 4bit (local, not pulled yet)",
+          "family": "glm",
+          "tool_call": true,
+          "limit": {
+            "context": 131072,
+            "output": 32768
+          }
+        },
+        "mlx-community/GLM-4.5-Air-4bit": {
+          "name": "GLM-4.5-Air 4bit (local, not pulled yet)",
+          "family": "glm",
+          "tool_call": true,
+          "limit": {
+            "context": 131072,
+            "output": 32768
+          }
+        },
+        "mlx-community/Devstral-Small-2-24B-Instruct-2512-4bit": {
+          "name": "Devstral Small 2 24B 4bit (local, not pulled yet)",
+          "family": "mistral",
+          "tool_call": true,
+          "limit": {
+            "context": 131072,
+            "output": 32768
+          }
+        },
+        "mlx-community/gpt-oss-120b-MXFP4-Q8": {
+          "name": "gpt-oss 120B (local, CHAT ONLY \u2014 no tool calling under mlx-lm)",
+          "family": "gpt-oss",
+          "tool_call": false,
+          "reasoning": true,
+          "limit": {
+            "context": 131072,
+            "output": 32768
+          }
+        }
+      }
+    }
+  },
+  "$comment": "Fallback for running without the dekho-local-inference discovery plugin: a hand-pinned provider with a fixed model list. Prefer ../common/install-opencode.sh, which discovers models from the running server and needs no edits when you change models. Copy this to ~/.config/opencode/opencode.json only if you do not want the plugin."
+}

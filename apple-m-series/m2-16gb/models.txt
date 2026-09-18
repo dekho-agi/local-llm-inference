@@ -1,0 +1,4 @@
+# MacBook Air M2 16 GB — practical ceiling ~10 GB for weights + KV cache.
+mlx-community/Qwen2.5-3B-Instruct-4bit
+mlx-community/Qwen3.5-4B-MLX-4bit
+mlx-community/Qwen2.5-Coder-7B-Instruct-4bit

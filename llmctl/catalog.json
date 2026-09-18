@@ -1,0 +1,268 @@
+{
+  "_comment": [
+    "Curated model reference for this repo. Facts that can be read from a",
+    "downloaded model's own files (context window, architecture, tool parser,",
+    "on-disk size) are NOT stored here \u2014 llmctl reads those live. This holds",
+    "only what cannot be derived: labels, roles, quantization notes, sizes for",
+    "models not yet downloaded, and which hardware profile each suits.",
+    "",
+    "Text models: verified against the HF API and, where cached, their own",
+    "config.json. Generative models: see apple-m-series/m5-128gb/",
+    "GENERATIVE-MODELS.md for sources; they are listed here as reference and",
+    "are NOT servable by `llmctl start` (different runtimes)."
+  ],
+  "models": {
+    "mlx-community/Qwen3-Coder-Next-4bit": {
+      "label": "Qwen3-Coder-Next 80B-A3B",
+      "class": "text",
+      "runtime": "mlx-lm",
+      "role": "daily-driver",
+      "params": "80B-A3B",
+      "size_gb": 44.9,
+      "output": 32768,
+      "profiles": [
+        "m5-128gb"
+      ],
+      "notes": "Hybrid attention: only 12/48 layers hold KV, so 24.6 KB/token. Best tool-call robustness (92.7% across 5 IDE/CLI environments). SWE-bench Verified 70.6-71.3."
+    },
+    "mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit": {
+      "label": "Qwen3-Coder 30B-A3B",
+      "class": "text",
+      "runtime": "mlx-lm",
+      "role": "fast",
+      "params": "30B-A3B",
+      "size_gb": 17.2,
+      "output": 32768,
+      "profiles": [
+        "m5-128gb"
+      ],
+      "notes": "95-114 tok/s on a fresh server. All 48 layers hold KV (98 KB/token), so 4x the context cost of Qwen3-Coder-Next. SWE-bench ~51."
+    },
+    "mlx-community/gpt-oss-120b-MXFP4-Q8": {
+      "label": "gpt-oss 120B",
+      "class": "text",
+      "runtime": "mlx-lm",
+      "role": "chat-only",
+      "params": "117B-A5.1B",
+      "size_gb": 63.4,
+      "output": 32768,
+      "profiles": [
+        "m5-128gb"
+      ],
+      "notes": "NO TOOL CALLING: mlx-lm 0.31.3 has no harmony parser, and it fails silently (finish_reason=stop, raw syntax in content). Its published evals did run at this MXFP4 quantization, unlike every other model here. SWE-bench 62.4."
+    },
+    "mlx-community/GLM-4.5-Air-4bit": {
+      "label": "GLM-4.5-Air 106B-A12B",
+      "class": "text",
+      "runtime": "mlx-lm",
+      "role": "heavy",
+      "params": "106B-A12B",
+      "size_gb": 60.2,
+      "output": 32768,
+      "profiles": [
+        "m5-128gb"
+      ],
+      "notes": "glm47 tool parser verified. The replacement for gpt-oss-120b in the different-family slot."
+    },
+    "mlx-community/GLM-4.7-Flash-4bit": {
+      "label": "GLM-4.7-Flash",
+      "class": "text",
+      "runtime": "mlx-lm",
+      "role": "fast",
+      "params": "~30B MoE-Lite",
+      "size_gb": 16.9,
+      "output": 32768,
+      "profiles": [
+        "m5-128gb"
+      ],
+      "notes": "Claims SWE-bench 59.2 and tau2-bench 79.5 at 16.9 GB. Multi-turn scores assume Preserved Thinking mode, which mlx-lm does not implement, so discount them."
+    },
+    "mlx-community/Devstral-Small-2-24B-Instruct-2512-4bit": {
+      "label": "Devstral Small 2 24B",
+      "class": "text",
+      "runtime": "mlx-lm",
+      "role": "reference",
+      "params": "24B dense",
+      "size_gb": 15.1,
+      "output": 32768,
+      "profiles": [
+        "m5-128gb"
+      ],
+      "notes": "Claims SWE-bench 68.0% from a 24B dense model. Dense means no MoE routing variance. mistral tool parser."
+    },
+    "mlx-community/Qwen2.5-3B-Instruct-4bit": {
+      "label": "Qwen2.5 3B",
+      "class": "text",
+      "runtime": "mlx-lm",
+      "role": "fast",
+      "params": "3B dense",
+      "size_gb": 1.8,
+      "output": 4096,
+      "profiles": [
+        "m2-16gb"
+      ],
+      "notes": "Default for the 16 GB M2 target."
+    },
+    "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit": {
+      "label": "Qwen2.5-Coder 7B",
+      "class": "text",
+      "runtime": "mlx-lm",
+      "role": "daily-driver",
+      "params": "7B dense",
+      "size_gb": 4.3,
+      "output": 8192,
+      "profiles": [
+        "m2-16gb"
+      ],
+      "notes": "Best small coder for a 16 GB machine."
+    },
+    "mlx-community/FLUX.2-Klein-4B-6bit": {
+      "label": "FLUX.2 Klein 4B",
+      "class": "image",
+      "runtime": "mflux",
+      "role": "fast",
+      "params": "4B",
+      "size_gb": 6.6,
+      "notes": "Apache-2.0, 4 steps. See GENERATIVE-MODELS.md."
+    },
+    "fcreait/Qwen-Image-Edit-mflux": {
+      "label": "Qwen-Image-Edit 2511 (q8)",
+      "class": "image-edit",
+      "runtime": "mflux",
+      "role": "daily-driver",
+      "size_gb": 37.47,
+      "notes": "WARNING: the repo holds q3/q4/q5/q6/q8 side by side and totals 151 GB -- download only the q8/ subdir (37.47 GB) via allow_patterns. Prefer mflux-community/qwen-image-edit-2511-mflux-bf16 (Apache-2.0, 2511)."
+    },
+    "mlx-community/Qwen3-VL-30B-A3B-Instruct-8bit": {
+      "label": "Qwen3-VL 30B-A3B",
+      "class": "vlm",
+      "runtime": "mlx-vlm",
+      "role": "daily-driver",
+      "params": "30B-A3B",
+      "size_gb": 33.5,
+      "notes": "Image understanding. Not servable by llmctl start."
+    },
+    "mlx-community/GLM-OCR-8bit": {
+      "label": "GLM-OCR",
+      "class": "vlm",
+      "runtime": "mlx-vlm",
+      "role": "fast",
+      "size_gb": 1.6,
+      "notes": "Document/OCR specialist."
+    },
+    "mlx-community/MiniCPM-o-4_5-4bit": {
+      "label": "MiniCPM-o 4.5",
+      "class": "omni",
+      "runtime": "mlx-vlm",
+      "role": "daily-driver",
+      "size_gb": 6.16,
+      "notes": "Speech OUT as well as in. Apache-2.0. The cheap omni option."
+    },
+    "mlx-community/parakeet-tdt-0.6b-v3": {
+      "label": "Parakeet TDT 0.6B v3",
+      "class": "stt",
+      "runtime": "mlx-audio",
+      "role": "daily-driver",
+      "size_gb": 2.51,
+      "notes": "Most-downloaded mlx-community model. Bigger STT buys little."
+    },
+    "mlx-community/Kokoro-82M-bf16": {
+      "label": "Kokoro 82M",
+      "class": "tts",
+      "runtime": "mlx-audio",
+      "role": "daily-driver",
+      "size_gb": 0.39,
+      "notes": "Near the quality ceiling for its task regardless of budget."
+    },
+    "mlx-community/index-tts2-mlx": {
+      "label": "IndexTTS 2",
+      "class": "tts",
+      "runtime": "mlx-audio",
+      "role": "heavy",
+      "size_gb": 8.08,
+      "notes": "Voice cloning and emotion control."
+    },
+    "mlx-community/MiniMax-Music3-mxfp8": {
+      "label": "MiniMax Music 3",
+      "class": "music",
+      "runtime": "mlx-audio",
+      "role": "daily-driver",
+      "size_gb": 13.87
+    },
+    "mlx-community/Qwen3-Embedding-0.6B-8bit": {
+      "label": "Qwen3-Embedding 0.6B",
+      "class": "embed",
+      "runtime": "mlx-vlm",
+      "role": "daily-driver",
+      "size_gb": 0.7,
+      "notes": "Via mlx_vlm.server. Avoid mlx-embeddings + ModernBERT: issue #80 returns silent all-NaN vectors on mixed-length batches."
+    },
+    "mlx-community/Qwen3.5-122B-A10B-6bit": {
+      "label": "Qwen3.5-122B-A10B (VLM, 6-bit)",
+      "class": "vlm",
+      "runtime": "mlx-vlm",
+      "role": "reference",
+      "params": "122B-A10B",
+      "size_gb": 100.15,
+      "notes": "Largest comfortable VLM here: 100.12 GB measured resident. Hybrid attention (12/48 layers hold KV), verified: 24.0 KiB/token, 3.22 GB at 128k -- vs 188 KiB/token for Qwen3-VL-235B. Beats the 235B on every published vision benchmark while being smaller. Apache-2.0. Not pulled: same model as the 5-bit, +15 GB, and 100 GB resident leaves nothing alongside."
+    },
+    "mlx-community/Qwen3.5-122B-A10B-5bit": {
+      "label": "Qwen3.5-122B-A10B (VLM, 5-bit)",
+      "class": "vlm",
+      "runtime": "mlx-vlm",
+      "role": "daily-driver",
+      "params": "122B-A10B",
+      "size_gb": 84.88,
+      "notes": "The safer big VLM: 84.88 GB leaves room for KV and apps under the ~100 GiB practical ceiling."
+    },
+    "mlx-community/Qwen3-Omni-30B-A3B-Instruct-bf16": {
+      "label": "Qwen3-Omni 30B-A3B (bf16, speech out)",
+      "class": "omni",
+      "runtime": "mlx-vlm",
+      "role": "heavy",
+      "params": "30B-A3B",
+      "size_gb": 70.53,
+      "notes": "Speech out as well as in. The whole audio path (talker + code2wav) is only 7.08 GB at bf16, and quantized builds DO quantize it -- mlx_vlm/utils.py skip_multimodal_module omits them -- so an 8-bit thinker with bf16 talker is ~41.9 GB with bit-identical speech."
+    },
+    "mflux-community/ideogram-4-mflux-q8": {
+      "label": "Ideogram 4 (8-bit)",
+      "class": "image",
+      "runtime": "mflux",
+      "role": "daily-driver",
+      "size_gb": 26.0,
+      "notes": "Best measured text-to-image trade here: Elo 1011.97 in 34 s. Beats HunyuanImage-3.0 at generation (964.80) for a fraction of the memory and time. GATED (auto-approve): accept the licence on the model page before pulling."
+    },
+    "mflux-community/krea-2-turbo-mflux-bf16": {
+      "label": "Krea 2 Turbo (bf16)",
+      "class": "image",
+      "runtime": "mflux",
+      "role": "heavy",
+      "size_gb": 34.2,
+      "notes": "Largest-quality image gen that stays well under the ceiling. Krea-2-Turbo mapping is inferred, not confirmed by the source leaderboard."
+    },
+    "mflux-community/qwen-image-edit-2511-mflux-bf16": {
+      "label": "Qwen-Image-Edit 2511 (bf16)",
+      "class": "image-edit",
+      "runtime": "mflux",
+      "role": "heavy",
+      "size_gb": 56.62,
+      "notes": "Apache-2.0 editing at full precision. Prefer over HunyuanImage unless you need the top Elo, and note requantize.py only goes downward."
+    },
+    "Anes1032/Wan2.2-TI2V-5B-mlx-q8": {
+      "label": "Wan 2.2 TI2V 5B (8-bit)",
+      "class": "video",
+      "runtime": "mlx-gen",
+      "role": "daily-driver",
+      "size_gb": 19.58,
+      "notes": "Replaces mlx-community/Wan2.2-TI2V-5B-mlx-q8, which 404s. ~5s of 832x480 in ~23 min."
+    },
+    "mlx-community/ltx-2.5-mlx-q8": {
+      "label": "LTX 2.5 (8-bit)",
+      "class": "video",
+      "runtime": "mlx-gen",
+      "role": "fast",
+      "size_gb": 23.89,
+      "notes": "Consumer is xocialize/ltx-2-mlx branch ltx-2.5, NOT dgrauet/ltx-2-mlx (LTX-2.3 only). The bf16 repo is 110 GB."
+    }
+  }
+}

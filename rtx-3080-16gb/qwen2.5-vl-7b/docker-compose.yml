@@ -1,0 +1,49 @@
+services:
+  qwen25-vl-7b:
+    image: nvcr.io/nvidia/vllm:26.03.post1-py3
+    ipc: host
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    ports:
+      - "${PORT:-8000}:8000"
+    volumes:
+      - huggingface_cache:/root/.cache/huggingface
+    environment:
+      - HUGGING_FACE_HUB_TOKEN=${HF_TOKEN}
+    command: >
+      vllm serve Qwen/Qwen2.5-VL-7B-Instruct-AWQ
+      --quantization awq_marlin
+      --dtype half
+      --max-model-len ${MAX_MODEL_LEN:-16384}
+      --gpu-memory-utilization ${GPU_MEMORY_UTILIZATION:-0.90}
+      --enable-auto-tool-choice
+      --tool-call-parser hermes
+      --host 0.0.0.0
+      --port 8000
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 300s
+    restart: unless-stopped
+
+volumes:
+  huggingface_cache:
+
+# OpenAI-compatible endpoint: http://localhost:8000/v1/chat/completions
+# Model: Qwen/Qwen2.5-VL-7B-Instruct-AWQ (vision + text, AWQ 4-bit ~4.3 GB weights)
+#
+# HARDWARE REQUIREMENTS:
+#   Ampere SM 8.6+ (RTX 3080, A10, etc.) with 16 GB VRAM.
+#   awq_marlin uses fused Marlin kernels — fastest AWQ path on Ampere.
+#   bf16 full-precision does NOT fit (weights alone ~15 GB leaves <1 GB KV cache).
+#
+# VISION USAGE (image_url content part):
+#   Each image consumes ~1–2 K tokens; --limit-mm-per-prompt image=5 caps
+#   images per request to protect KV cache headroom.

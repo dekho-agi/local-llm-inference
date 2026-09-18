@@ -1,0 +1,13 @@
+name: dekho-apple-local-llm
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - pip
+  - pip:
+      # 0.31.x is required for the newer architectures used by the M5 model set:
+      # qwen3_next, qwen3_5(_moe), glm4_moe(_lite), gpt_oss, minimax, mistral3, gemma4
+      - mlx-lm>=0.31.3
+      # hub v1 pulls hf_xet, which is the accelerated transfer backend by
+      # default — no HF_HUB_ENABLE_HF_TRANSFER needed.
+      - huggingface_hub>=1.0

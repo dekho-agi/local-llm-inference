@@ -1,0 +1,24 @@
+# MacBook Pro M5 Max 128 GB — the offline coding kit.
+# Sizes are on-disk download sizes, verified against the HF API.
+# Ordered smallest-first so a usable model is ready soonest; pull.sh resumes
+# partial downloads, so interrupting and re-running is safe.
+#
+# IMPORTANT: a model is only usable agentically if mlx-lm has a tool parser for
+# its chat template. Run ./check-tool-parser.py <repo-id> BEFORE downloading.
+
+# --- fast / battery-friendly: 30B total, ~3B active, loads in seconds ---
+mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit        # 17.2 GB  parser: qwen3_coder
+
+# --- daily driver: agentic coding, 80B total / ~3B active, hybrid attention ---
+mlx-community/Qwen3-Coder-Next-4bit                    # 44.9 GB  parser: qwen3_coder
+
+# --- verified tool-calling alternatives (uncomment to pull) ---
+# mlx-community/GLM-4.7-Flash-4bit                     # 16.9 GB  parser: glm47
+# mlx-community/Devstral-Small-2-24B-Instruct-2512-4bit# 15.1 GB  parser: mistral
+# mlx-community/GLM-4.5-Air-4bit                       # 60.2 GB  parser: glm47
+# mlx-community/Qwen3.8-27B-4bit                       # 16.1 GB  parser: qwen3_coder
+# mlx-community/Qwen3.6-35B-A3B-4bit                   # 20.4 GB  parser: qwen3_coder
+# mlx-community/gemma-4-26b-a4b-it-4bit                # 15.4 GB  parser: gemma4
+
+# --- CHAT ONLY: no tool calling under mlx-lm 0.31.3 (see MODEL-COMPARISON.md) ---
+# mlx-community/gpt-oss-120b-MXFP4-Q8                  # 63.4 GB  parser: NONE
