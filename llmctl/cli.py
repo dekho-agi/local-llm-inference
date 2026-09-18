@@ -2,6 +2,7 @@
 
 import json
 import subprocess
+from dataclasses import replace
 
 import typer
 from rich.console import Console
@@ -9,6 +10,7 @@ from rich.prompt import Confirm, IntPrompt
 from rich.table import Table
 
 from . import catalog, gpu, manifest, servers
+from . import gen as genmod
 from . import host as hostmod
 from .paths import LOG_DIR, MANIFEST, RUN_DIR
 
@@ -174,7 +176,9 @@ def models_cmd(
             f"{m.total_gb(ctx):.1f}G" if m.total_gb(ctx) else "—",
             _fit(m, h.budget_gb, ctx) if m.runtime == "mlx-lm" else "—",
             ("[green]yes[/]" if m.agentic else "[red]no[/]") if m.runtime == "mlx-lm" else "—",
-            "[green]yes[/]" if m.cached else "[dim]no[/]",
+            ("[yellow]partial[/]" if m.incomplete else "[green]yes[/]")
+            if m.cached
+            else "[dim]no[/]",
         )
     console.print(t)
     if not all_:
@@ -588,3 +592,198 @@ def opencode_cmd(
 
 if __name__ == "__main__":
     app()
+
+
+# ─────────────────────── generative models ───────────────────────
+# These do not go through opencode: it speaks /v1/chat/completions with tool
+# calls, which is the wrong shape for diffusion and audio. Separate env, own
+# runners — see llmctl/gen.py.
+gen_app = typer.Typer(
+    no_args_is_help=True, help="Run generative models (image, vision, speech, video)."
+)
+app.add_typer(gen_app, name="gen")
+
+
+@gen_app.command("list")
+def gen_list():
+    """Show generative model classes, their runtime, and what is downloaded."""
+    ms = catalog.load(include_uncached=True)
+    t = Table(box=None, pad_edge=False)
+    t.add_column("class")
+    t.add_column("what it does")
+    t.add_column("runtime ready")
+    t.add_column("models cached")
+    for name, r in genmod.SPECS.items():
+        have = [m for m in ms if m.model_class == name and m.cached]
+        want = [m for m in ms if m.model_class == name]
+        t.add_row(
+            name,
+            r.label,
+            "[green]yes[/]" if r.available() else "[red]no[/]",
+            f"{len(have)}/{len(want)}" + (f"  [dim]{have[0].label}[/]" if have else ""),
+        )
+    console.print(t)
+    console.print("\n[dim]llmctl gen doctor · llmctl gen setup · llmctl gen <class> 'prompt'[/]")
+
+
+@gen_app.command("doctor")
+def gen_doctor():
+    """Check the generative environment."""
+    st = genmod.env_status()
+    console.print(f"env      {st['env']}")
+    console.print(f"python   {st['python'] or '[red]not created[/]'}")
+    if not st["python"]:
+        console.print("\nrun [bold]llmctl gen setup[/] to create it")
+        raise typer.Exit(1)
+    t = Table(box=None, pad_edge=False)
+    t.add_column("class")
+    t.add_column("entrypoint")
+    t.add_column("status")
+    missing = 0
+    for name, info in st["runners"].items():
+        ok = info["available"]
+        missing += 0 if ok else 1
+        t.add_row(name, info["entry"], "[green]ok[/]" if ok else "[red]missing[/]")
+    console.print(t)
+    if missing:
+        console.print(f"\n[yellow]{missing} runner(s) unavailable[/] — llmctl gen setup")
+
+
+@gen_app.command("setup")
+def gen_setup():
+    """Create the generative env and install the runtimes."""
+    console.print(f"creating env [bold]{genmod.GEN_ENV}[/] with mflux, mlx-vlm, mlx-audio")
+    console.print(
+        "[dim]kept separate from the serving env so a dependency "
+        "conflict cannot break llmctl start[/]"
+    )
+    rc = subprocess.call(
+        [
+            "conda",
+            "create",
+            "-y",
+            "-n",
+            genmod.GEN_ENV,
+            "python=3.12",
+        ]
+    )
+    if rc != 0:
+        console.print("[yellow]env may already exist; continuing[/]")
+    py = genmod.gen_python()
+    if not py:
+        console.print("[red]could not locate the new env[/]")
+        raise typer.Exit(1)
+    # Extras discovered by actually running each runner. mlx-audio declares
+    # none of these, and Kokoro's failure message says only "pip install
+    # misaki" no matter which submodule is missing — its English path also
+    # imports misaki.espeak, which needs espeakng_loader.
+    # Note: misaki[en] pins a spacy that fails to build here; base misaki plus
+    # these four works.
+    for pkg in (
+        "mflux",
+        "mlx-vlm",
+        "mlx-audio",
+        "misaki",
+        "num2words",
+        "phonemizer",
+        "espeakng_loader",
+    ):
+        console.print(f"installing {pkg} …")
+        if subprocess.call([str(py), "-m", "pip", "install", "-q", pkg]) != 0:
+            console.print(f"[yellow]{pkg} failed to install[/]")
+    gen_doctor()
+
+
+@gen_app.command("run")
+def gen_run(
+    klass: str = typer.Argument(..., help="image, image-edit, vlm, omni, stt, tts, music, video"),
+    prompt: str | None = typer.Argument(None),
+    model: str | None = typer.Option(None, "--model", "-m", help="Repo id; default = cached pick."),
+    input_path: str | None = typer.Option(None, "--input", "-i", help="Input image or audio."),
+    output: str | None = typer.Option(None, "--output", "-o"),
+    lyrics: str | None = typer.Option(
+        None, "--lyrics", help="music: structured lyrics; default [instrumental]."
+    ),
+    steps: int | None = typer.Option(
+        None, "--steps", help="Inference steps, where the runtime supports it."
+    ),
+    seed: int | None = typer.Option(None, "--seed"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Print the command without running it."),
+):
+    """Run a generative model. Use --dry-run to see the exact command first."""
+    runner = genmod.SPECS.get(klass)
+    if not runner:
+        console.print(f"[red]unknown class[/] {klass!r}; one of: {', '.join(genmod.SPECS)}")
+        raise typer.Exit(1)
+
+    if model:
+        m = catalog.find(model)
+        repo = m.repo_id if m else model
+    else:
+        cands = [
+            x for x in catalog.load(include_uncached=False) if x.model_class == klass and x.ready
+        ]
+        if not cands:
+            console.print(
+                f"[red]no cached {klass} model[/] — "
+                f"llmctl pull, or see `llmctl models --all --class {klass}`"
+            )
+            raise typer.Exit(1)
+        m = _choose_model_generic(cands, f"which {klass} model") if len(cands) > 1 else cands[0]
+        repo = m.repo_id
+
+    entry_override = ""
+    if m is not None:
+        import json as _json
+
+        from .paths import CATALOG
+
+        try:
+            entry_override = (
+                _json.loads(CATALOG.read_text())["models"].get(repo, {}).get("entry", "")
+            )
+        except Exception:
+            entry_override = ""
+    extra: list[str] = []
+    if steps is not None:
+        extra += ["--steps", str(steps)]
+    if seed is not None:
+        extra += ["--seed", str(seed)]
+    if lyrics is not None:
+        # replaces the spec default rather than duplicating the flag
+        runner = replace(
+            runner, defaults=[d for d in runner.defaults if d not in ("--lyrics", "[instrumental]")]
+        )
+        extra += ["--lyrics", lyrics]
+    try:
+        cmd = genmod.build_command(
+            runner, repo, prompt, input_path, output, entry_override=entry_override, extra=extra
+        )
+    except (ValueError, RuntimeError) as e:
+        console.print(f"[red]{e}[/]")
+        raise typer.Exit(1) from e
+
+    # markup=False: an argument like "[instrumental]" would otherwise be
+    # parsed as rich markup and silently disappear from the echoed command.
+    console.print(" ".join(cmd), markup=False, style="dim")
+    if dry_run:
+        return
+    if runner.klass == "video":
+        console.print(
+            "[yellow]video generation is slow (~23 min for 5s); plug in before starting[/]"
+        )
+    raise typer.Exit(subprocess.call(cmd))
+
+
+def _choose_model_generic(models, prompt: str):
+    t = Table(box=None, pad_edge=False)
+    t.add_column("#", justify="right", style="bold cyan")
+    t.add_column("model")
+    t.add_column("size", justify="right")
+    for i, m in enumerate(models, 1):
+        t.add_row(str(i), m.label or m.repo_id, f"{(m.disk_gb or m.size_gb or 0):.1f}G")
+    console.print(t)
+    idx = IntPrompt.ask(
+        prompt, choices=[str(i) for i in range(1, len(models) + 1)], show_choices=False
+    )
+    return models[idx - 1]

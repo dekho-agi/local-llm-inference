@@ -104,6 +104,11 @@ Task-scoped procedures live in `agents/skills/<name>/SKILL.md`.
 |---|---|
 | `setup-local-inference` | Setting up a Mac from scratch for local inference + opencode, or explaining how the running system works |
 
+Generative models (image, VLM, speech, music, video) are **not** served through
+opencode — they use `llmctl gen`, backed by a separate conda env. When adding a
+runner, read the runtime's `--help` and then actually run it: the flag names
+differ between packages and even between subcommands of the same package.
+
 ## Key documents
 
 | File | Contents |

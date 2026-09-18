@@ -123,7 +123,8 @@
       "role": "fast",
       "params": "4B",
       "size_gb": 6.6,
-      "notes": "Apache-2.0, 4 steps. See GENERATIVE-MODELS.md."
+      "notes": "Apache-2.0, 4 steps. See GENERATIVE-MODELS.md.",
+      "entry": "mflux-generate-flux2"
     },
     "fcreait/Qwen-Image-Edit-mflux": {
       "label": "Qwen-Image-Edit 2511 (q8)",
@@ -131,7 +132,8 @@
       "runtime": "mflux",
       "role": "daily-driver",
       "size_gb": 37.47,
-      "notes": "WARNING: the repo holds q3/q4/q5/q6/q8 side by side and totals 151 GB -- download only the q8/ subdir (37.47 GB) via allow_patterns. Prefer mflux-community/qwen-image-edit-2511-mflux-bf16 (Apache-2.0, 2511)."
+      "notes": "WARNING: the repo holds q3/q4/q5/q6/q8 side by side and totals 151 GB -- download only the q8/ subdir (37.47 GB) via allow_patterns. Prefer mflux-community/qwen-image-edit-2511-mflux-bf16 (Apache-2.0, 2511).",
+      "entry": "mflux-generate-qwen-edit"
     },
     "mlx-community/Qwen3-VL-30B-A3B-Instruct-8bit": {
       "label": "Qwen3-VL 30B-A3B",
@@ -230,7 +232,8 @@
       "runtime": "mflux",
       "role": "daily-driver",
       "size_gb": 26.0,
-      "notes": "Best measured text-to-image trade here: Elo 1011.97 in 34 s. Beats HunyuanImage-3.0 at generation (964.80) for a fraction of the memory and time. GATED (auto-approve): accept the licence on the model page before pulling."
+      "notes": "Best measured text-to-image trade here: Elo 1011.97 in 34 s. Beats HunyuanImage-3.0 at generation (964.80) for a fraction of the memory and time. GATED (auto-approve): accept the licence on the model page before pulling.",
+      "entry": "mflux-generate-ideogram4"
     },
     "mflux-community/krea-2-turbo-mflux-bf16": {
       "label": "Krea 2 Turbo (bf16)",
@@ -238,7 +241,8 @@
       "runtime": "mflux",
       "role": "heavy",
       "size_gb": 34.2,
-      "notes": "Largest-quality image gen that stays well under the ceiling. Krea-2-Turbo mapping is inferred, not confirmed by the source leaderboard."
+      "notes": "Largest-quality image gen that stays well under the ceiling. Krea-2-Turbo mapping is inferred, not confirmed by the source leaderboard.",
+      "entry": "mflux-generate-krea2"
     },
     "mflux-community/qwen-image-edit-2511-mflux-bf16": {
       "label": "Qwen-Image-Edit 2511 (bf16)",
@@ -246,7 +250,8 @@
       "runtime": "mflux",
       "role": "heavy",
       "size_gb": 56.62,
-      "notes": "Apache-2.0 editing at full precision. Prefer over HunyuanImage unless you need the top Elo, and note requantize.py only goes downward."
+      "notes": "Apache-2.0 editing at full precision. Prefer over HunyuanImage unless you need the top Elo, and note requantize.py only goes downward.",
+      "entry": "mflux-generate-qwen-edit"
     },
     "Anes1032/Wan2.2-TI2V-5B-mlx-q8": {
       "label": "Wan 2.2 TI2V 5B (8-bit)",

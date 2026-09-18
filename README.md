@@ -140,17 +140,42 @@ A counterintuitive one worth knowing: **the 80B is 4× cheaper per token of
 context than the 30B**, because only 12 of its 48 layers hold a KV cache. Long
 agentic sessions are where the bigger model is *most* worth its size.
 
-### Generative models don't connect to opencode
+### Generative models: `llmctl gen`
 
-opencode speaks `/v1/chat/completions` with tool calls — the right shape for
-coding agents, and the wrong shape for diffusion and audio. The image, video
-and speech models in `GENERATIVE-MODELS.md` run under different runtimes
-(`mflux`, `mlx-vlm`, `mlx-audio`, `mlx-gen`) with their own interfaces.
+opencode speaks `/v1/chat/completions` with tool calls — the right shape for a
+coding agent, the wrong shape for diffusion and audio. So generative models get
+their own path, deliberately: **opencode for coding work, `llmctl gen` for
+everything else.**
 
-So the split is deliberate: **opencode for Claude-Code-style coding work; a
-separate wrapper for generative calls.** `llmctl models --class image` already
-catalogues them, and `llmctl` is where that wrapper would live — nothing serves
-them yet.
+```bash
+./llmctl.sh gen setup            # one-time: creates the generative env
+./llmctl.sh gen list             # classes, runtime readiness, models cached
+./llmctl.sh gen doctor           # what's installed and what isn't
+
+./llmctl.sh gen run image "a red bicycle against a white wall" -o bike.png
+./llmctl.sh gen run vlm "transcribe this" --input scan.png
+./llmctl.sh gen run tts "hello there" -o ./speech
+./llmctl.sh gen run stt --input speech/audio_000.wav -o transcript
+./llmctl.sh gen run music "warm acoustic guitar, instrumental" -o track.wav
+```
+
+`--dry-run` prints the exact command without running it, which is the fastest
+way to see what a runtime is being asked to do.
+
+The runtimes live in a **separate conda env** (`dekho-apple-gen`) so a
+dependency conflict there cannot break the mlx-lm serving env your coding
+workflow depends on.
+
+Each runtime names its flags differently — mlx-audio's TTS wants `--text` and
+`--output_path`, its STT wants `--audio` and `--output-path`, mlx-vlm wants
+`--image`, mflux wants `--image-paths` — and mflux ships a console script per
+model family. `llmctl/gen.py` records the real names (read from each `--help`,
+then confirmed by running them) and the catalog records which script a model
+needs, so you don't have to remember any of it.
+
+Measured on the M5 Max: FLUX.2-Klein-4B renders 1024x1024 in **11 s** at
+13.34 GB peak; MiniMax-Music3 produced 21 s of 44.1 kHz stereo in 47 s; Kokoro
+TTS and parakeet STT round-trip a sentence back verbatim.
 
 ---
 

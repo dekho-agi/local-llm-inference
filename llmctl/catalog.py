@@ -36,13 +36,19 @@ class Model:
     arch: str | None = None
     kv_bytes_per_token: int | None = None
     cached: bool = False
+    incomplete: bool = False  # download in progress / interrupted
     notes: str = ""
     profiles: list[str] = field(default_factory=list)
 
     @property
     def servable(self) -> bool:
-        """Can `llmctl start` serve this? Only mlx-lm text models."""
-        return self.runtime == "mlx-lm" and self.cached
+        """Can `llmctl start` serve this? Only complete mlx-lm text models."""
+        return self.runtime == "mlx-lm" and self.cached and not self.incomplete
+
+    @property
+    def ready(self) -> bool:
+        """Present and fully downloaded — safe to offer in a picker."""
+        return self.cached and not self.incomplete
 
     @property
     def agentic(self) -> bool:
