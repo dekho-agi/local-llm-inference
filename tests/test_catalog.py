@@ -68,3 +68,15 @@ def test_load_returns_models_and_labels_them():
     ms = catalog.load(include_uncached=True)
     assert ms
     assert all(m.label for m in ms)
+
+
+def test_incomplete_flag_is_exposed_on_the_model():
+    """A mid-download model must not be offered as ready.
+
+    Offering one looks identical to a complete model in a picker and then
+    fails on load.
+    """
+    m = catalog.Model(repo_id="x", cached=True, incomplete=True, runtime="mlx-lm")
+    assert not m.ready
+    assert not m.servable
+    assert catalog.Model(repo_id="y", cached=True, runtime="mlx-lm").ready

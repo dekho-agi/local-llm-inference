@@ -519,6 +519,22 @@ def verify(
         m = catalog.scan_cache().get(repo.repo_id)
         parser = (m.tool_parser if m else None) or "[dim]none[/]"
 
+        # An in-progress or interrupted download is the one state that must be
+        # detected before anything else: a stale index can make a complete
+        # repo look short, and an index mismatch can make an incomplete one
+        # look fine. .incomplete blobs are unambiguous.
+        partials = glob.glob(str(repo.repo_path) + "/blobs/*.incomplete")
+        if partials:
+            mb = sum(P(f).stat().st_size for f in partials) / 1e6
+            t.add_row(
+                repo.repo_id,
+                str(len(shards)) if shards else "0",
+                parser,
+                f"[yellow]downloading[/] [dim]({len(partials)} partial, {mb:.0f} MB)[/]",
+            )
+            bad += 1
+            continue
+
         if not shards:
             t.add_row(repo.repo_id, "0", parser, "[yellow]no safetensors[/]")
             continue
@@ -526,7 +542,53 @@ def verify(
             t.add_row(repo.repo_id, str(len(shards)), parser, "[green]ok (no index)[/]")
             continue
         try:
-            exp = json.loads(P(idx[0]).read_text())["metadata"]["total_size"]
+            index = json.loads(P(idx[0]).read_text())
+            meta_idx = index.get("metadata") or {}
+            exp = meta_idx.get("total_size")
+
+            # What the index says the shards are called, vs what is on disk.
+            # Some repos ship an index copied from a differently-sharded build
+            # (Qwen3-VL-30B-A3B-8bit lists 13 shards / 62 GB while shipping 7 /
+            # 33.5 GB), so the index cannot be assumed authoritative. Treating
+            # it as such reported a complete download as 28 GB short.
+            referenced = {P(v).name for v in (index.get("weight_map") or {}).values()}
+            on_disk = {P(f).name for f in shards}
+
+            if referenced and referenced != on_disk:
+                unreadable = [f for f in shards if not P(f).resolve().exists()]
+                if unreadable:
+                    t.add_row(
+                        repo.repo_id,
+                        str(len(shards)),
+                        parser,
+                        f"[red]{len(unreadable)} shard(s) unreadable[/]",
+                    )
+                    bad += 1
+                else:
+                    t.add_row(
+                        repo.repo_id,
+                        str(len(shards)),
+                        parser,
+                        f"[yellow]ok, index mismatch[/] "
+                        f"[dim](index lists {len(referenced)}, repo ships "
+                        f"{len(on_disk)})[/]",
+                    )
+                continue
+
+            if exp is None:
+                # mflux indexes carry only quantization_level/mflux_version.
+                unreadable = [f for f in shards if not P(f).resolve().exists()]
+                t.add_row(
+                    repo.repo_id,
+                    str(len(shards)),
+                    parser,
+                    "[green]ok (no total_size)[/]"
+                    if not unreadable
+                    else f"[red]{len(unreadable)} shard(s) missing[/]",
+                )
+                bad += bool(unreadable)
+                continue
+
             actual = sum(P(f).resolve().stat().st_size for f in shards)
             hdr = 0
             for f in shards:
@@ -557,7 +619,11 @@ def verify(
     )
     if partials:
         mb = sum(P(p).stat().st_size for p in partials) / 1e6
-        console.print(f"[yellow]{len(partials)} orphaned partial download(s), {mb:.0f} MB[/]")
+        console.print(
+            f"[yellow]{len(partials)} partial download blob(s), {mb:.0f} MB[/]"
+            " [dim]— active if a model above says 'downloading';"
+            " otherwise orphans from an interrupted pull[/]"
+        )
     if bad:
         console.print("[red]re-run llmctl pull for the incomplete models[/]")
         raise typer.Exit(1)
