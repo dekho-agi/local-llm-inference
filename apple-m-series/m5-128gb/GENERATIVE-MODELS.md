@@ -2096,6 +2096,7 @@ Found by installing and running these, not by reading docs.
 | `ideogram-4-mflux-q8` is gated | `gated: auto`; the pull fails with "Access denied. This repository requires approval." One click on the model page unblocks it. |
 | The unified server cannot generate images from quantized repos | `mlx_vlm.server`'s `/images/generations` resolves a repo to its snapshot hash path and then fails to infer the FLUX.2 variant; passing the repo id directly is rejected because it only accepts canonical `black-forest-labs/flux.2-klein-*` ids. Embeddings, rerank, TTS, STT and chat all work through it — image generation must go through mflux (`llmctl gen run image`). |
 | mp3 output needs ffmpeg | `/audio/speech` defaults to mp3 and 400s without ffmpeg installed. Pass `response_format: "wav"`. |
+| mlx-video also has a script per family, and wants a **path** | `mlx_video.wan_2.generate` / `mlx_video.ltx_2.generate`, and `--model-dir` takes a local snapshot directory, not a repo id (also `--output-path`, not `--output`). llmctl resolves the id to its snapshot dir. |
 | mflux entrypoint depends on the model | `mflux-generate-krea2`, `-ideogram4`, `-flux2`, `-qwen-edit` are separate console scripts. There is no single `mflux-generate` that covers them. |
 
 Measured on this M5 Max while verifying:
@@ -2109,3 +2110,5 @@ Measured on this M5 Max while verifying:
 | stt | parakeet-tdt-0.6b-v3 | transcribed the Kokoro output back verbatim |
 | vlm | GLM-OCR-8bit | read text out of a rendered image |
 | omni | MiniCPM-o-4_5-4bit | described the FLUX-generated image correctly |
+| image-edit | qwen-image-edit-2511-mflux-bf16 | 20 steps, **7m02s**, **58.54 GB peak**. "Change the bicycle from red to bright yellow, keep everything else identical" preserved the saddle, bottle cage, tan-wall tires, cracked wall and asphalt. Genuine targeted editing. |
+| embeddings | Qwen3-Embedding-0.6B-8bit | 1024-dim vectors over `/v1/embeddings` |

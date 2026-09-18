@@ -28,9 +28,7 @@ def build() -> dict:
     # speaks the same OpenAI paths but its models are TTS/STT/embedding —
     # useless to opencode, and it would otherwise claim the primary provider id
     # whenever it held the lower port.
-    live = sorted(
-        (s for s in servers.list_servers() if not s.is_gen), key=lambda s: s.port
-    )
+    live = sorted((s for s in servers.list_servers() if not s.is_gen), key=lambda s: s.port)
     models = {}
 
     for m in catalog.load(include_uncached=False):

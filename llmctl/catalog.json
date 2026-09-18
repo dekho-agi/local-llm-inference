@@ -259,7 +259,8 @@
       "runtime": "mlx-gen",
       "role": "daily-driver",
       "size_gb": 19.58,
-      "notes": "Replaces mlx-community/Wan2.2-TI2V-5B-mlx-q8, which 404s. ~5s of 832x480 in ~23 min."
+      "notes": "Replaces mlx-community/Wan2.2-TI2V-5B-mlx-q8, which 404s. ~5s of 832x480 in ~23 min.",
+      "entry": "mlx_video.wan_2.generate"
     },
     "mlx-community/ltx-2.5-mlx-q8": {
       "label": "LTX 2.5 (8-bit)",
@@ -267,7 +268,8 @@
       "runtime": "mlx-gen",
       "role": "fast",
       "size_gb": 23.89,
-      "notes": "Consumer is xocialize/ltx-2-mlx branch ltx-2.5, NOT dgrauet/ltx-2-mlx (LTX-2.3 only). The bf16 repo is 110 GB."
+      "notes": "Consumer is xocialize/ltx-2-mlx branch ltx-2.5, NOT dgrauet/ltx-2-mlx (LTX-2.3 only). The bf16 repo is 110 GB.",
+      "entry": "mlx_video.ltx_2.generate"
     }
   }
 }

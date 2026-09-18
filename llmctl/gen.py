@@ -72,6 +72,7 @@ class Spec:
     input_flag: str = ""  # image/audio input
     output_flag: str = "--output"
     output_is_dir: bool = False
+    model_is_path: bool = False  # runtime wants a local dir, not a repo id
     defaults: list[str] = field(default_factory=list)
     produces: str = "file"
     notes: str = ""
@@ -195,11 +196,23 @@ SPECS: dict[str, Spec] = {
     "video": Spec(
         klass="video",
         label="video generation",
-        module="mlx_vlm.generate",
-        output_flag="--output",
-        defaults=["--output-modality", "video"],
+        # NOT mlx_vlm: its model dir holds only video_depth_anything, so Wan
+        # and LTX fail at load even though the import succeeds. mlx-video
+        # provides a console script per family, named in the catalog "entry":
+        # mlx_video.wan_2.generate / mlx_video.ltx_2.generate.
+        entry="mlx_video.wan_2.generate",
+        model_flag="--model-dir",
+        model_is_path=True,
+        input_flag="--image",
+        output_flag="--output-path",
         produces="mp4",
-        notes="Slow: ~23 min for 5s at 832x480. Wan/LTX may need their own runtime.",
+        notes=(
+            "Install mlx-video from GIT, not PyPI: `pip install "
+            "git+https://github.com/Blaizzy/mlx-video.git` -- the PyPI package "
+            "of that name is an unrelated video-I/O library. Do NOT install "
+            "mlx-gen alongside the other runtimes: it pins mlx<0.32.0 and "
+            "downgrades mlx/mlx-metal to 0.31.2. Slow: ~23 min for 5s."
+        ),
     ),
     "embed": Spec(
         klass="embed",
@@ -236,6 +249,21 @@ def env_status() -> dict:
     return out
 
 
+def snapshot_dir(repo_id: str) -> str | None:
+    """Local snapshot directory for a cached repo.
+
+    mlx-video takes --model-dir rather than a repo id, so the id has to be
+    resolved to the path the weights actually live at.
+    """
+    import glob
+
+    safe = repo_id.replace("/", "--")
+    hits = sorted(
+        glob.glob(str(Path.home() / f".cache/huggingface/hub/models--{safe}/snapshots/*/"))
+    )
+    return hits[-1].rstrip("/") if hits else None
+
+
 def build_command(
     spec: Spec,
     model: str,
@@ -254,7 +282,16 @@ def build_command(
         raise ValueError(f"input not found: {input_path}")
 
     cmd, _ = spec.resolve_entry(entry_override)
-    cmd += [spec.model_flag, model]
+    model_arg = model
+    if spec.model_is_path:
+        resolved = snapshot_dir(model)
+        if not resolved:
+            raise ValueError(
+                f"{model} is not in the local cache, and {spec.klass} needs a "
+                f"model directory — run `llmctl pull {model}` first"
+            )
+        model_arg = resolved
+    cmd += [spec.model_flag, model_arg]
     if spec.prompt_flag and prompt:
         cmd += [spec.prompt_flag, prompt]
     if spec.input_flag and input_path:
