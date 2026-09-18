@@ -2112,3 +2112,7 @@ Measured on this M5 Max while verifying:
 | omni | MiniCPM-o-4_5-4bit | described the FLUX-generated image correctly |
 | image-edit | qwen-image-edit-2511-mflux-bf16 | 20 steps, **7m02s**, **58.54 GB peak**. "Change the bicycle from red to bright yellow, keep everything else identical" preserved the saddle, bottle cage, tan-wall tires, cracked wall and asphalt. Genuine targeted editing. |
 | embeddings | Qwen3-Embedding-0.6B-8bit | 1024-dim vectors over `/v1/embeddings` |
+| video | Wan2.2-TI2V-5B-mlx-q8 | **3.38 s at 1280x704** in **18m55s** total (VAE decode alone 197.7 s). Valid MP4, verified by reading the container. Note the default resolution is 1280x704, not the 832x480 assumed earlier — which is where the time goes. |
+
+**All nine classes are now confirmed by real execution**, not by dry-run:
+image, image-edit, vlm, omni, stt, tts, music, embed, video.

@@ -211,7 +211,8 @@ SPECS: dict[str, Spec] = {
             "git+https://github.com/Blaizzy/mlx-video.git` -- the PyPI package "
             "of that name is an unrelated video-I/O library. Do NOT install "
             "mlx-gen alongside the other runtimes: it pins mlx<0.32.0 and "
-            "downgrades mlx/mlx-metal to 0.31.2. Slow: ~23 min for 5s."
+            "downgrades mlx/mlx-metal to 0.31.2. Slow: measured 18m55s for "
+            "3.4s at the 1280x704 default; pass --width/--height to cut it."
         ),
     ),
     "embed": Spec(
