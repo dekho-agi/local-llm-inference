@@ -221,10 +221,10 @@
       "label": "Qwen3-Omni 30B-A3B (bf16, speech out)",
       "class": "omni",
       "runtime": "mlx-vlm",
-      "role": "heavy",
+      "role": "reference",
       "params": "30B-A3B",
       "size_gb": 70.53,
-      "notes": "Speech out as well as in. The whole audio path (talker + code2wav) is only 7.08 GB at bf16, and quantized builds DO quantize it -- mlx_vlm/utils.py skip_multimodal_module omits them -- so an 8-bit thinker with bf16 talker is ~41.9 GB with bit-identical speech."
+      "notes": "Text out only on mlx-vlm 0.7.1, despite shipping the audio path. Verified: 417 talker + 230 code2wav tensors are in the weights and the loaded module exposes .talker/.code2wav, but there is no generate_audio method, which is what mlx-vlm's capability gate requires. Responds to text+image in 13s. For speech out use Kokoro TTS."
     },
     "mflux-community/ideogram-4-mflux-q8": {
       "label": "Ideogram 4 (8-bit)",

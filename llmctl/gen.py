@@ -73,6 +73,7 @@ class Spec:
     output_flag: str = "--output"
     output_is_dir: bool = False
     model_is_path: bool = False  # runtime wants a local dir, not a repo id
+    speech_flag: list[str] = field(default_factory=list)  # added when output requested
     defaults: list[str] = field(default_factory=list)
     produces: str = "file"
     notes: str = ""
@@ -153,9 +154,20 @@ SPECS: dict[str, Spec] = {
         module="mlx_vlm.generate",
         input_flag="--image",
         output_flag="--output",
-        produces="text+audio",
         defaults=["--max-tokens", "512"],
-        notes="Add --output-modality audio for speech out.",
+        produces="text+audio",
+        # Speech out is opt-in: without --output-modality audio the model
+        # answers in text only. build_command adds it when an --output path is
+        # given, since that is the only reason to ask for a file.
+        speech_flag=["--output-modality", "audio"],
+        notes=(
+            "TEXT ONLY in practice on mlx-vlm 0.7.1. Qwen3-Omni's checkpoint "
+            "does ship the audio path (417 talker + 230 code2wav tensors, and "
+            "the loaded module exposes .talker and .code2wav), but mlx-vlm's "
+            "implementation has no generate_audio method, and "
+            "is_audio_generation_model() requires one -- so speech out is "
+            "refused. For speech, use Kokoro TTS (`gen run tts`), which works."
+        ),
     ),
     "stt": Spec(
         klass="stt",
@@ -299,6 +311,8 @@ def build_command(
         cmd += [spec.input_flag, input_path]
     if spec.output_flag and output:
         cmd += [spec.output_flag, output]
+    if spec.speech_flag and output:
+        cmd += spec.speech_flag
     cmd += spec.defaults
     if extra:
         cmd += extra

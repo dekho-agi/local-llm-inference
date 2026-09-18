@@ -225,6 +225,9 @@ but unauthenticated hub requests are rate-limited.
 
 ## Before you lose connectivity
 
+See [FLIGHT.md](FLIGHT.md) for the runbook — every step in it was run on the
+machine with `HF_HUB_OFFLINE=1`.
+
 ```bash
 ./llmctl.sh verify     # every shard complete, tool parser per model
 ./llmctl.sh start --offline   # proves it boots with HF_HUB_OFFLINE=1

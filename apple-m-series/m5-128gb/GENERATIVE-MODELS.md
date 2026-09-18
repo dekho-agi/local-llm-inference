@@ -2114,5 +2114,31 @@ Measured on this M5 Max while verifying:
 | embeddings | Qwen3-Embedding-0.6B-8bit | 1024-dim vectors over `/v1/embeddings` |
 | video | Wan2.2-TI2V-5B-mlx-q8 | **3.38 s at 1280x704** in **18m55s** total (VAE decode alone 197.7 s). Valid MP4, verified by reading the container. Note the default resolution is 1280x704, not the 832x480 assumed earlier — which is where the time goes. |
 
-**All nine classes are now confirmed by real execution**, not by dry-run:
-image, image-edit, vlm, omni, stt, tts, music, embed, video.
+### Correction: Qwen3-Omni does not speak on mlx-vlm 0.7.1
+
+The survey argued from safetensors headers that Qwen3-Omni's audio path ships
+in every build, and concluded that STT -> LLM -> TTS chaining was no longer
+needed. The evidence was right and the conclusion was wrong.
+
+Verified on the downloaded bf16 checkpoint:
+
+| Check | Result |
+|---|---|
+| talker tensors in weights | **417** |
+| code2wav tensors in weights | **230** |
+| loaded module has `.talker` / `.code2wav` | **yes** |
+| loaded module has `generate_audio` | **no** |
+| `mlx_vlm.generate --output-modality audio` | **refused** |
+
+`is_audio_generation_model()` requires a callable `generate_audio` on the
+model, and mlx-vlm's Qwen3-Omni implementation does not define one. So the
+capability is in the weights, and even in the loaded module tree, but the
+driving code is absent. It answers text+image prompts fine (13 s), and is
+listed as `reference` rather than a working omni pick.
+
+**For speech out today, use Kokoro TTS** — verified working, 0.39 GB. Chaining
+is still required.
+
+**Eight of nine classes are confirmed by real execution**, not by dry-run:
+image, image-edit, vlm, stt, tts, music, embed, video. Omni runs but only
+emits text (above).
