@@ -2094,6 +2094,8 @@ Found by installing and running these, not by reading docs.
 | mlx-vlm cannot run Wan or LTX | Its model directory has only `video_depth_anything`. Routing video at `mlx_vlm.generate` fails at load, even though the import succeeds. |
 | Kokoro's dependencies are undeclared | mlx-audio installs none of them, and the error says "pip install misaki" whichever submodule is missing. The working set is `misaki + num2words + phonemizer + espeakng_loader` — the English path imports `misaki.espeak`, which needs `espeakng_loader`. `misaki[en]` pins a spacy that fails to build. |
 | `ideogram-4-mflux-q8` is gated | `gated: auto`; the pull fails with "Access denied. This repository requires approval." One click on the model page unblocks it. |
+| The unified server cannot generate images from quantized repos | `mlx_vlm.server`'s `/images/generations` resolves a repo to its snapshot hash path and then fails to infer the FLUX.2 variant; passing the repo id directly is rejected because it only accepts canonical `black-forest-labs/flux.2-klein-*` ids. Embeddings, rerank, TTS, STT and chat all work through it — image generation must go through mflux (`llmctl gen run image`). |
+| mp3 output needs ffmpeg | `/audio/speech` defaults to mp3 and 400s without ffmpeg installed. Pass `response_format: "wav"`. |
 | mflux entrypoint depends on the model | `mflux-generate-krea2`, `-ideogram4`, `-flux2`, `-qwen-edit` are separate console scripts. There is no single `mflux-generate` that covers them. |
 
 Measured on this M5 Max while verifying:

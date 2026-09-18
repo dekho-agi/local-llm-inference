@@ -68,3 +68,48 @@ def test_written_manifest_matches_build():
     _register(8000, "m")
     written = manifest.write()
     assert json.loads(MANIFEST.read_text())["servers"] == written["servers"]
+
+
+def _register_gen(port, roles):
+    s = servers.Server(
+        port=port,
+        pid=os.getpid(),
+        model=next(iter(roles.values())),
+        kind="gen",
+        roles=roles,
+    )
+    (SERVERS_DIR / f"{port}.json").write_text(json.dumps(s.__dict__))
+
+
+def test_generative_server_is_never_advertised_to_opencode():
+    """Regression: a gen server on the lower port claimed the primary id.
+
+    Its models are TTS/STT/embedding — useless as chat models — and opencode
+    would have defaulted to it.
+    """
+    _register_gen(8000, {"tts": "mlx-community/Kokoro-82M-bf16"})
+    _register(8001, "mlx-community/Qwen3-Coder-Next-4bit")
+    d = manifest.build()
+    ports = [s["port"] for s in d["servers"]]
+    assert ports == [8001], "generative server must be excluded"
+    assert d["servers"][0]["provider_id"] == manifest.PRIMARY_ID
+    assert d["preloaded"] == "mlx-community/Qwen3-Coder-Next-4bit"
+
+
+def test_a_lone_generative_server_yields_no_providers():
+    _register_gen(8000, {"embedding": "mlx-community/Qwen3-Embedding-0.6B-8bit"})
+    d = manifest.build()
+    assert d["servers"] == []
+    assert d["endpoint"] is None
+
+
+def test_manifest_models_are_only_servable_text_models():
+    """Non-LLM runtimes must never reach opencode's model list."""
+    _register(8000, "mlx-community/Qwen3-Coder-Next-4bit")
+    models = manifest.build()["models"]
+    for repo, meta in models.items():
+        assert meta["context"], f"{repo} has no context window"
+        # a TTS/STT/image model would have no context or a non-mlx-lm runtime
+        assert "Kokoro" not in repo
+        assert "parakeet" not in repo
+        assert "Embedding" not in repo

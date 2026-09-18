@@ -162,6 +162,30 @@ everything else.**
 `--dry-run` prints the exact command without running it, which is the fastest
 way to see what a runtime is being asked to do.
 
+### One server for every generative role
+
+`mlx_vlm.server` serves all of them at once over an OpenAI-compatible API, so
+models load once instead of per call:
+
+```bash
+./llmctl.sh gen serve --auto          # picks a cached model per role
+./llmctl.sh gen serve --tts mlx-community/Kokoro-82M-bf16 --embed Qwen3-Embedding
+./llmctl.sh ps                        # shows it as kind=gen with its roles
+```
+
+| Endpoint | Verified |
+|---|---|
+| `POST /v1/embeddings` | 1024-dim vectors |
+| `POST /v1/rerank` | needs `--rerank` |
+| `POST /audio/speech` | pass `response_format: "wav"` — mp3 needs ffmpeg |
+| `POST /audio/transcriptions` | multipart `file=@audio.wav`; round-tripped TTS output back to text |
+| `POST /v1/chat/completions` | works with the VLM role |
+| `POST /images/generations` | **does not work** with quantized repos — only accepts canonical `black-forest-labs/*` ids. Use `llmctl gen run image` (mflux). |
+
+The generative server is deliberately **not** advertised to opencode: it speaks
+the same paths, but its models are TTS/STT/embedding, which are useless as chat
+models. `llmctl ps` shows both kinds side by side.
+
 The runtimes live in a **separate conda env** (`dekho-apple-gen`) so a
 dependency conflict there cannot break the mlx-lm serving env your coding
 workflow depends on.

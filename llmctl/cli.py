@@ -325,16 +325,27 @@ def ps():
 
     t = Table(box=None, pad_edge=False)
     t.add_column("port", justify="right")
-    t.add_column("model")
+    t.add_column("kind")
+    t.add_column("model / roles")
     t.add_column("ctx", justify="right")
     t.add_column("pid", justify="right")
     t.add_column("up", justify="right")
     t.add_column("health")
     t.add_column("endpoint")
     for s in live:
+        if s.is_gen:
+            # A generative server holds several models at once, so naming just
+            # one of them (as this did) was misleading.
+            what = (
+                ", ".join(f"{role}={repo.split('/')[-1]}" for role, repo in (s.roles or {}).items())
+                or "generative"
+            )
+        else:
+            what = s.model.replace("mlx-community/", "")
         t.add_row(
             str(s.port),
-            s.model.replace("mlx-community/", ""),
+            "[magenta]gen[/]" if s.is_gen else "llm",
+            what,
             f"{s.context // 1024}k" if s.context else "—",
             str(s.pid),
             s.uptime(),
@@ -791,3 +802,93 @@ def _choose_model_generic(models, prompt: str):
         prompt, choices=[str(i) for i in range(1, len(models) + 1)], show_choices=False
     )
     return models[idx - 1]
+
+
+@gen_app.command("serve")
+def gen_serve(
+    port: int | None = typer.Option(None, "--port", "-p"),
+    vlm: str | None = typer.Option(None, "--vlm", help="Vision/chat model."),
+    image: str | None = typer.Option(None, "--image", help="Image generation model."),
+    tts: str | None = typer.Option(None, "--tts"),
+    stt: str | None = typer.Option(None, "--stt"),
+    embed: str | None = typer.Option(None, "--embed"),
+    rerank: str | None = typer.Option(None, "--rerank"),
+    auto: bool = typer.Option(False, "--auto", help="Pick a cached model for every role."),
+    offline: bool = typer.Option(False, "--offline"),
+):
+    """Serve every generative role from one OpenAI-compatible endpoint.
+
+    Models load once instead of per call, which is why this beats the one-shot
+    runners for anything repeated. Endpoints: /v1/embeddings, /v1/rerank,
+    /audio/speech, /audio/transcriptions, /images/generations, /images/edits,
+    /chat/completions.
+    """
+    h = hostmod.detect()
+
+    def pick(klass: str) -> str | None:
+        cands = [
+            m for m in catalog.load(include_uncached=False) if m.model_class == klass and m.ready
+        ]
+        if not cands:
+            return None
+        # smallest first: a serve-everything default should be cheap
+        return min(cands, key=lambda m: m.disk_gb or m.size_gb or 0).repo_id
+
+    # mlx_vlm.server flag names, verified from --help
+    roles: dict[str, str] = {}
+    for flag, value, klass in (
+        ("model", vlm, "vlm"),
+        ("image", image, "image"),
+        ("tts", tts, "tts"),
+        ("stt", stt, "stt"),
+        ("embedding", embed, "embed"),
+        ("reranker", rerank, "embed"),
+    ):
+        if value:
+            m = catalog.find(value)
+            roles[flag] = m.repo_id if m else value
+        elif auto and flag != "reranker":
+            got = pick(klass)
+            if got:
+                roles[flag] = got
+
+    if not roles:
+        console.print("[red]no roles selected[/] — pass --vlm/--tts/--stt/--embed, or --auto")
+        raise typer.Exit(1)
+
+    t = Table(box=None, pad_edge=False, show_header=False)
+    for flag, repo in roles.items():
+        t.add_row(flag, repo)
+    console.print(t)
+
+    with console.status("loading generative server …") as status:
+
+        def tick(i):
+            status.update(f"loading generative server … {i}s")
+
+        try:
+            s = servers.start_gen(
+                roles, port=port, profile=h.profile, offline=offline, on_wait=tick
+            )
+        except (RuntimeError, TimeoutError) as e:
+            console.print(f"[red]failed:[/] {e}")
+            raise typer.Exit(1) from e
+
+    manifest.write()
+    console.print(f"[green]ready[/]  {s.endpoint}  (pid {s.pid})")
+    console.print(
+        """
+  embeddings   POST {e}/embeddings
+  rerank       POST {e}/rerank
+  speech       POST {b}/audio/speech          (response_format: wav — mp3 needs ffmpeg)
+  transcribe   POST {b}/audio/transcriptions  (multipart: file=@audio.wav)
+  images       NOT usable with quantized repos — see note below
+  chat         POST {e}/chat/completions
+""".format(e=s.endpoint, b=s.endpoint.removesuffix("/v1"))
+    )
+    console.print(
+        "[yellow]note[/] /images/generations only accepts canonical "
+        "black-forest-labs/* ids, not quantized mlx-community repos."
+    )
+    console.print("      Use [bold]llmctl gen run image[/] (mflux) for image generation.")
+    console.print(f"[dim]llmctl ps · llmctl stop --port {s.port} · log {s.log}[/]")

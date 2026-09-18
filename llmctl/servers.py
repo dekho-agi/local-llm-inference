@@ -32,6 +32,8 @@ class Server:
     port: int
     pid: int
     model: str
+    kind: str = "llm"  # llm (mlx_lm.server) | gen (mlx_vlm.server)
+    roles: dict | None = None  # gen only: {role: repo id}
     context: int | None = None
     max_tokens: int = 32768
     prompt_cache_bytes: str = "24G"
@@ -69,6 +71,10 @@ class Server:
                 return True
         except Exception:
             return False
+
+    @property
+    def is_gen(self) -> bool:
+        return self.kind == "gen"
 
     def loaded_models(self, timeout: float = 2.0) -> list[str]:
         try:
@@ -284,3 +290,89 @@ def _inject_token(env: dict) -> None:
     if tok:
         env["HF_TOKEN"] = tok
         env["HUGGING_FACE_HUB_TOKEN"] = tok
+
+
+def start_gen(
+    roles: dict[str, str],
+    port: int | None = None,
+    host: str = "127.0.0.1",
+    profile: str = "",
+    offline: bool = False,
+    wait: int = 900,
+    on_wait=None,
+) -> Server:
+    """Start the unified generative server (mlx_vlm.server).
+
+    One process serves every generative role over an OpenAI-compatible API:
+    /v1/embeddings, /v1/rerank, /audio/speech, /audio/transcriptions,
+    /images/generations, /images/edits, /chat/completions. Models load once
+    instead of per call, which is the main reason to prefer this over the
+    one-shot CLI runners.
+
+    `roles` maps a server flag role to a repo id, e.g.
+    {"model": "...VL...", "tts": "...Kokoro...", "embedding": "...Embedding..."}.
+    """
+    from .gen import gen_python
+
+    ensure_dirs()
+    py = gen_python()
+    if not py:
+        raise RuntimeError("generative env not found — run `llmctl gen setup`")
+
+    port = port or allocate_port(host)
+    if not port_free(port, host):
+        existing = get(port)
+        raise RuntimeError(
+            f"port {port} already serving {existing.model}"
+            if existing
+            else f"port {port} is in use by a process we do not manage"
+        )
+
+    args = [str(py), "-m", "mlx_vlm.server", "--host", host, "--port", str(port)]
+    for role, repo in roles.items():
+        args += [f"--{role}-model" if role != "model" else "--model", repo]
+
+    env = os.environ.copy()
+    env.setdefault("TOKENIZERS_PARALLELISM", "false")
+    if offline:
+        env["HF_HUB_OFFLINE"] = "1"
+    _inject_token(env)
+
+    log = LOG_DIR / f"{port}.log"
+    with log.open("w") as fh:
+        fh.write(f"# llmctl gen serve on :{port} roles={roles}\n")
+        fh.flush()
+        proc = subprocess.Popen(
+            args,
+            stdout=fh,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+            env=env,
+            cwd=str(Path.home()),
+        )
+
+    s = Server(
+        port=port,
+        pid=proc.pid,
+        model=next(iter(roles.values()), "generative"),
+        kind="gen",
+        roles=dict(roles),
+        host=host,
+        log=str(log),
+        started_at=datetime.now(UTC).isoformat(timespec="seconds"),
+        profile=profile,
+    )
+    _path(port).write_text(json.dumps(asdict(s), indent=2) + "\n")
+
+    for i in range(wait):
+        if not pid_alive(proc.pid):
+            _path(port).unlink(missing_ok=True)
+            tail = "\n".join(log.read_text().splitlines()[-30:])
+            raise RuntimeError(f"generative server exited during startup.\n--- log ---\n{tail}")
+        if s.responds(timeout=2):
+            return s
+        if on_wait:
+            on_wait(i)
+        time.sleep(1)
+
+    raise TimeoutError(f"generative server on :{port} did not answer within {wait}s; see {log}")

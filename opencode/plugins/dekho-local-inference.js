@@ -143,9 +143,13 @@ export const DekhoLocalInference = async ({ client }) => {
 
       for (const srv of servers) {
         const liveIds = await probe(srv.endpoint)
-        // Union: live ids are authoritative for availability; manifest ids
-        // keep the picker populated when a server is down.
-        const ids = new Set([...(liveIds ?? []), ...Object.keys(meta)])
+        // Intersect, don't union. The manifest is the vetted list: it holds
+        // only text models mlx-lm can serve, with a real context window and a
+        // known tool-parser verdict. A server's own /v1/models lists whatever
+        // it happens to hold — for a generative server that is TTS and
+        // embedding models, which would otherwise be registered as chat models
+        // with guessed metadata. Live ids confirm availability; they never add.
+        const ids = new Set(Object.keys(meta))
         if (ids.size === 0) continue
 
         const providerId = srv.provider_id ?? PRIMARY_ID
