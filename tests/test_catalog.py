@@ -80,3 +80,38 @@ def test_incomplete_flag_is_exposed_on_the_model():
     assert not m.ready
     assert not m.servable
     assert catalog.Model(repo_id="y", cached=True, runtime="mlx-lm").ready
+
+
+def test_a_repo_with_no_weight_files_is_not_ready(tmp_path, monkeypatch):
+    """A failed pull leaves the repo dir, snapshot and config.json behind.
+
+    Regression: scan_cache called that 'cached' and therefore ready, so
+    pickers offered models that had no weights at all and failed at load.
+    """
+    from llmctl import catalog as c
+
+    repo = tmp_path / "models--x--y"
+    snap = repo / "snapshots" / "abc"
+    snap.mkdir(parents=True)
+    (snap / "config.json").write_text('{"max_position_embeddings": 4096}')
+    (repo / "blobs").mkdir()
+
+    class FakeRepo:
+        repo_id = "x/y"
+        repo_type = "model"
+        repo_path = repo
+        size_on_disk = 1234
+
+    class FakeInfo:
+        repos = [FakeRepo()]
+
+    monkeypatch.setattr("huggingface_hub.scan_cache_dir", lambda *a, **k: FakeInfo())
+    got = c.scan_cache()
+    assert "x/y" in got
+    assert got["x/y"].incomplete, "no safetensors present, must not be ready"
+    assert not got["x/y"].ready
+
+    # and with a weight file it becomes ready
+    (snap / "model.safetensors").write_bytes(b"\x00" * 16)
+    got2 = c.scan_cache()
+    assert got2["x/y"].ready

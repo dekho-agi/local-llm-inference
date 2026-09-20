@@ -255,6 +255,159 @@ Compose. The Kubernetes/Helm path used to live here and has moved to
 
 ---
 
+## How to use each model
+
+Every command here has been run on this machine. Timings and peak memory are
+measured, not estimated — see [VALIDATION.md](VALIDATION.md) for the full
+per-model results.
+
+### Coding — launch opencode against a local LLM
+
+```bash
+./llmctl.sh start                                  # numbered picker
+./llmctl.sh start Qwen3-Coder-Next                 # or name it
+opencode                                           # /models → Dekho Local Inference
+```
+
+That's the whole flow: `start` writes the manifest, the plugin registers the
+provider, and opencode picks it up. To drive it without the TUI:
+
+```bash
+opencode run --model dekho-local-inference/mlx-community/Qwen3-Coder-Next-4bit \
+  "implement parse_kv in parse.py using the edit tool"
+```
+
+| Model | Size | Use it when |
+|---|---|---|
+| `Qwen3-Coder-Next-4bit` | 44.9 GB | Default. 80B/3B active, 256k context, best tool-call robustness |
+| `Qwen3-Coder-30B-A3B-Instruct-4bit` | 17.2 GB | On battery, or quick edits — 95–114 tok/s |
+| `GLM-4.7-Flash-4bit` | 16.9 GB | Same size class, different family for a second opinion |
+| `Devstral-Small-2-24B-Instruct-2512-4bit` | 15.1 GB | Dense, so no MoE routing variance |
+| `GLM-4.5-Air-4bit` | 60.2 GB | Heavier alternative, 106B/12B active |
+| `Qwen2.5-Coder-7B-Instruct-4bit` | 4.3 GB | Small machines, or leaving memory for generative work |
+| `gpt-oss-120b-MXFP4-Q8` | 63.4 GB | **Chat only — cannot tool-call**, so not usable as an agent |
+
+### Run several at once
+
+Each gets its own port, and both kinds coexist:
+
+```bash
+./llmctl.sh start Qwen3-Coder-Next        # :8000
+./llmctl.sh start Qwen3-Coder-30B         # :8001
+./llmctl.sh gen serve --auto              # :8002, all generative roles
+./llmctl.sh ps
+```
+
+Prefer this over switching models inside one server: hot-swapping costs ~3x
+throughput until restart.
+
+### Generate an image
+
+```bash
+./llmctl.sh gen run image "a red bicycle against a white wall, photograph" \
+  -o bike.png                                      # FLUX.2-Klein-4B, ~11 s
+
+./llmctl.sh gen run image "a lighthouse at dawn, long exposure" \
+  -m krea-2-turbo -o lighthouse.png --steps 8      # higher quality, ~46 s
+```
+
+| Model | Size | Time | Peak |
+|---|---|---|---|
+| `FLUX.2-Klein-4B-6bit` | 6.6 GB | 11 s (4 steps) | 13.3 GB |
+| `krea-2-turbo-mflux-bf16` | 34.2 GB | 46 s (8 steps) | 41.7 GB |
+| `ideogram-4-mflux-q8` | 26.0 GB | — | licence-gated on HF |
+
+### Edit an image (instruction-guided)
+
+```bash
+./llmctl.sh gen run image-edit \
+  "change the bicycle from red to bright yellow, keep everything else identical" \
+  -i bike.png -o yellow.png                        # ~7 min, 58.5 GB peak
+```
+
+This is the locally-runnable equivalent of the hosted image-editing tools. It
+preserved the saddle, bottle cage, tyre walls and background while recolouring
+only the frame.
+
+### Read an image (vision / OCR)
+
+```bash
+./llmctl.sh gen run vlm "Transcribe all text in this image." -i scan.png
+./llmctl.sh gen run vlm "Describe this in one sentence." -i photo.png -m Qwen3-VL
+```
+
+| Model | Size | Good for |
+|---|---|---|
+| `GLM-OCR-8bit` | 1.6 GB | Documents, screenshots, receipts |
+| `Qwen3-VL-30B-A3B-Instruct-8bit` | 33.5 GB | General description and reasoning about images |
+| `Qwen3.5-122B-A10B-5bit` | 84.9 GB | Best quality; hybrid attention keeps KV at 24 KB/token |
+
+### Speech
+
+```bash
+./llmctl.sh gen run tts "The quick brown fox jumps over the lazy dog." -o ./speech
+./llmctl.sh gen run stt -i speech/audio_000.wav -o transcript
+cat transcript.txt
+```
+
+Kokoro (0.39 GB) and parakeet (2.5 GB) are both at the quality ceiling for
+their tasks — larger ASR models measure *worse*, so there is nothing to gain by
+scaling up here.
+
+Over HTTP, via the unified server:
+
+```bash
+./llmctl.sh gen serve --auto
+curl localhost:8002/audio/speech -H 'Content-Type: application/json' \
+  -d '{"model":"mlx-community/Kokoro-82M-bf16","input":"hello","response_format":"wav"}' \
+  -o hello.wav                                     # mp3 needs ffmpeg; wav does not
+curl localhost:8002/audio/transcriptions -F file=@hello.wav \
+  -F model=mlx-community/parakeet-tdt-0.6b-v3
+```
+
+### Generate music
+
+```bash
+./llmctl.sh gen run music "warm acoustic guitar, slow fingerpicking, instrumental" \
+  -o track.wav --steps 20                          # ~47 s → 21 s of 44.1 kHz stereo
+```
+
+`--lyrics` is required by the runtime and defaults to `[instrumental]`; pass
+your own for vocals.
+
+### Generate video
+
+```bash
+./llmctl.sh gen run video "a red balloon rising into a blue sky" -o clip.mp4
+```
+
+**Plug in first.** Measured: 3.4 s of 1280×704 in ~19 minutes. The default
+resolution is what costs the time — pass `--width 832 --height 480` to cut it
+down substantially.
+
+### Embeddings and reranking
+
+```bash
+./llmctl.sh gen serve --embed Qwen3-Embedding --rerank Qwen3-Reranker
+curl localhost:8000/v1/embeddings -H 'Content-Type: application/json' \
+  -d '{"model":"mlx-community/Qwen3-Embedding-0.6B-8bit","input":["hello","world"]}'
+```
+
+Returns 1024-dim vectors. Avoid `mlx-embeddings` with ModernBERT — an open bug
+returns silent all-NaN vectors on mixed-length batches.
+
+### Things that do not work, and why
+
+| Attempt | Outcome |
+|---|---|
+| `gpt-oss-120b` as an opencode agent | mlx-lm has no parser for its harmony tool format, and it fails **silently** — raw syntax in the message content |
+| Speech out from `Qwen3-Omni` | The weights ship the talker, but mlx-vlm 0.7.1 defines no `generate_audio`. Use Kokoro |
+| `index-tts2-mlx` | Ships `config.yaml`; mlx-audio's loader requires `config.json` |
+| `/images/generations` on the unified server | Only accepts canonical `black-forest-labs/*` ids, not quantized repos. Use `gen run image` |
+| `ideogram-4-mflux-q8` | Licence-gated on HuggingFace; accept it on the model page first |
+
+---
+
 ## Development
 
 ```bash

@@ -139,7 +139,24 @@ def scan_cache() -> dict[str, Model]:
         if not snaps:
             continue
         snap = snaps[-1]
-        m = Model(repo_id=repo.repo_id, cached=True, disk_gb=round(repo.size_on_disk / 1e9, 1))
+        # Two independent ways a cached repo can be unusable, both seen here:
+        #   - .incomplete blobs: a download in progress or interrupted
+        #   - no weight files at all: a failed pull that still left the repo
+        #     directory, a snapshot and config.json behind. That one is
+        #     nastier, because everything looks present until load time.
+        partial = bool(glob.glob(str(repo.repo_path) + "/blobs/*.incomplete"))
+        has_weights = bool(
+            glob.glob(snap + "*.safetensors")
+            or glob.glob(snap + "**/*.safetensors", recursive=True)
+            or glob.glob(snap + "*.gguf")
+            or glob.glob(snap + "*.npz")
+        )
+        m = Model(
+            repo_id=repo.repo_id,
+            cached=True,
+            incomplete=partial or not has_weights,
+            disk_gb=round(repo.size_on_disk / 1e9, 1),
+        )
         cfgs = glob.glob(snap + "config.json")
         if cfgs:
             try:

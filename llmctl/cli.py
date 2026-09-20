@@ -13,6 +13,7 @@ from rich.table import Table
 from . import catalog, gpu, manifest, servers
 from . import gen as genmod
 from . import host as hostmod
+from . import validate as validatemod
 from .paths import LOG_DIR, MANIFEST, RUN_DIR
 
 app = typer.Typer(
@@ -984,3 +985,69 @@ def gen_serve(
     )
     console.print("      Use [bold]llmctl gen run image[/] (mflux) for image generation.")
     console.print(f"[dim]llmctl ps · llmctl stop --port {s.port} · log {s.log}[/]")
+
+
+@app.command("validate")
+def validate_cmd(
+    model: str | None = typer.Option(None, "--model", "-m", help="Only models matching this."),
+    klass: str | None = typer.Option(None, "--class", "-c", help="Only this class."),
+    out: str | None = typer.Option(None, "--out", "-o", help="Write markdown here."),
+    append: bool = typer.Option(False, "--append", help="Merge into an existing report."),
+):
+    """Download-check, run and validate models, and write a markdown report.
+
+    Each model is actually loaded and made to produce something. A row passes
+    only if the artifact is usable — a parseable PNG, an openable WAV, a real
+    transcription, a non-empty completion — never merely because a process
+    exited zero.
+    """
+    from pathlib import Path as P
+
+    h = hostmod.detect()
+    host = f"{h.model} · {h.chip} · {h.memory_gb:.0f} GB ({h.working_set_gb} GB GPU working set) · macOS {h.macos}"
+
+    console.print(f"[dim]{host}[/]")
+    console.print("[dim]each model is loaded and run; this is not a dry run[/]\n")
+
+    def progress(m):
+        console.print(f"[cyan]→[/] {m.repo_id} [dim]({m.model_class})[/]")
+
+    results = validatemod.validate_all(only=model, klass=klass, progress=progress)
+
+    t = Table(box=None, pad_edge=False)
+    t.add_column("model")
+    t.add_column("class")
+    t.add_column("status")
+    t.add_column("time", justify="right")
+    t.add_column("detail")
+    for r in results:
+        colour = {"PASS": "green", "FAIL": "red", "NOT DOWNLOADED": "dim", "SKIP": "yellow"}[
+            r.status
+        ]
+        t.add_row(
+            r.repo_id.split("/")[-1],
+            r.model_class,
+            f"[{colour}]{r.status}[/]",
+            f"{r.seconds:.0f}s" if r.seconds else "—",
+            (r.skipped or r.detail or "")[:60],
+        )
+    console.print(t)
+
+    npass = sum(1 for r in results if r.status == "PASS")
+    nfail = sum(1 for r in results if r.status == "FAIL")
+    console.print(
+        f"\n[green]{npass} passed[/] · [red]{nfail} failed[/] · "
+        f"{len(results) - npass - nfail} other"
+    )
+
+    if out:
+        md = validatemod.to_markdown(results, host=host)
+        path = P(out)
+        if append and path.exists():
+            prev = path.read_text()
+            merged = validatemod.merge_reports(prev, results, host)
+            path.write_text(merged)
+        else:
+            path.write_text(md)
+        console.print(f"wrote {path}")
+    raise typer.Exit(1 if nfail else 0)
