@@ -1,15 +1,12 @@
 {
   "_comment": [
-    "Curated model reference for this repo. Facts that can be read from a",
-    "downloaded model's own files (context window, architecture, tool parser,",
-    "on-disk size) are NOT stored here \u2014 llmctl reads those live. This holds",
-    "only what cannot be derived: labels, roles, quantization notes, sizes for",
-    "models not yet downloaded, and which hardware profile each suits.",
-    "",
-    "Text models: verified against the HF API and, where cached, their own",
-    "config.json. Generative models: see apple-m-series/m5-128gb/",
-    "GENERATIVE-MODELS.md for sources; they are listed here as reference and",
-    "are NOT servable by `llmctl start` (different runtimes)."
+    "Curated model reference. Facts readable from a downloaded model's own files",
+    "(context window, architecture, tool parser, on-disk size) are NOT stored",
+    "here -- llmctl reads those live. This holds only what cannot be derived:",
+    "labels, roles, quantization notes, sizes for models not yet downloaded,",
+    "which hardware profile each suits, and the console-script entry point for",
+    "runtimes that ship one per model family.",
+    "Prose reference: docs/models.md. Test results: VALIDATION.md."
   ],
   "models": {
     "mlx-community/Qwen3-Coder-Next-4bit": {
@@ -123,7 +120,7 @@
       "role": "fast",
       "params": "4B",
       "size_gb": 6.6,
-      "notes": "Apache-2.0, 4 steps. See GENERATIVE-MODELS.md.",
+      "notes": "Apache-2.0, 4 steps. 1024x1024 in 6-11s, 13.3 GB peak.",
       "entry": "mflux-generate-flux2"
     },
     "fcreait/Qwen-Image-Edit-mflux": {

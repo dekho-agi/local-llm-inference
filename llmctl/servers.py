@@ -1,7 +1,7 @@
 """Server registry: run several models at once, each on its own port.
 
 One mlx_lm.server can hot-swap models, but swapping costs ~3x throughput until
-restart (see apple-m-series/m5-128gb/CONTEXT.md). So when you want two models
+restart (see docs/hardware.md). So when you want two models
 concurrently — a 30B and an 8B, say — you run two servers. This tracks them.
 
 Each live server owns <RUN_DIR>/servers/<port>.json. The registry is rebuilt

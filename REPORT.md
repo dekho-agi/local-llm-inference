@@ -37,48 +37,22 @@ If you only ever run one command from this report, make it
 
 ## 2. What your machine can actually hold
 
-This is the part that surprises people.
-
 | | |
 |---|---|
-| Installed memory | 128 GB |
-| `max_recommended_working_set_size` | **115.4 GB** ← the real ceiling |
-| Sensible planning budget | **~100 GB** |
+| Installed | 128 GB |
+| GPU working-set ceiling | **115.4 GB** |
+| Plan against | **~100 GB** |
 
-macOS reports a GPU working-set limit well below installed RAM, and MLX raises
-the wired limit to that value itself (no `sudo sysctl` needed — ignore older
-advice telling you to set `iogpu.wired_limit_mb`).
+Crossing it swaps, and not gradually — same prompt and seed, bf16 at
+118.55 GiB peak took **730.96 s** against INT8 at 67.63 GiB in **70.54 s**.
+10.4x, from paging. Below the ceiling, higher precision is free or better.
 
-**Plan against ~100 GB, not 115.** Approaching the ceiling does not degrade
-gradually, it falls off a cliff. A measured case on a 128 GB Mac, same prompt
-and seed:
+Context cost is architectural, not size-based: Qwen3-Coder-Next (80B) is **4x
+cheaper per context token** than the 30B, because only 12 of its 48 layers
+hold a KV cache. For long agent sessions the bigger model is the cheaper one.
 
-| Precision | Peak memory | Time |
-|---|---|---|
-| bf16 | 118.55 GiB | **730.96 s** |
-| INT8 | 67.63 GiB | **70.54 s** |
-
-**10.4× slower** — that is paging, not a quantization penalty. Below the
-ceiling, higher precision is free or better; above it you are swapping.
-
-### Context costs less than you expect, and not in the way you expect
-
-A model's context window is paid for in KV cache, and the architecture matters
-more than the parameter count:
-
-| Model | Layers holding KV | Per token | KV at 256k context |
-|---|---|---|---|
-| Qwen3-Coder-Next (80B) | **12 of 48** | 24.6 KB | **6.4 GB** |
-| Qwen3-Coder-30B | 48 of 48 | 98 KB | 25.8 GB |
-
-The **80B model is 4× cheaper per token of context than the 30B**, because it
-is a hybrid — only every fourth layer keeps a KV cache, the rest hold a fixed
-77 MB recurrent state. At full context the 30B's cache exceeds its own weights.
-
-Practical upshot: for long agent sessions, reach for the *bigger* model. It is
-the opposite of the usual intuition.
-
----
+Run `./llmctl.sh host` for your machine. Full detail:
+[docs/hardware.md](docs/hardware.md).
 
 ## 3. What works
 
@@ -199,18 +173,15 @@ useful.
 ## 7. Using it day to day
 
 ```bash
-./llmctl.sh ps                    # what's running
-./llmctl.sh monitor -w            # GPU and real memory, live
-./llmctl.sh models                # what's cached and whether it fits
-./llmctl.sh stop                  # pick one, or --all
+./llmctl.sh ps                # what's running
+./llmctl.sh monitor -w        # GPU and real memory, live
+./llmctl.sh models            # what's cached and whether it fits
+./llmctl.sh stop              # pick one, or --all
 ```
 
-Task recipes, with worked examples for every model class, are in the
-[README](README.md#how-to-use-each-model). Per-model test results are in
-[VALIDATION.md](VALIDATION.md). Working offline is covered in
-[FLIGHT.md](FLIGHT.md) — that path is validated cold, with networking off.
-
----
+Per-task recipes: [README](README.md#using-each-model). Per-model status and
+known failures: [docs/models.md](docs/models.md). Test results:
+[VALIDATION.md](VALIDATION.md).
 
 ## 8. Honest limitations
 

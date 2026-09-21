@@ -38,7 +38,7 @@ ENV_PY="$(conda info --base)/envs/${ENV_NAME}/bin/python"
 
 # Note: mlx_lm.server has NO context-length flag. The model's own
 # max_position_embeddings is the hard ceiling and MAX_CONTEXT only sets what we
-# advertise to opencode (which is what drives its compaction). See CONTEXT.md.
+# advertise to opencode (which is what drives its compaction). See docs/hardware.md.
 args=(--model "$MODEL" --port "$PORT" --host "$HOST")
 
 # mlx_lm.server defaults --max-tokens to 512, which truncates agent turns.
