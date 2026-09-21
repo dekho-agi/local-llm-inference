@@ -12,7 +12,92 @@ conda env create -f apple-m-series/common/environment.yml
 opencode                          # /models → Dekho Local Inference
 ```
 
-New to this, or sharing with a colleague: [REPORT.md](REPORT.md).
+## What works
+
+All verified by loading the model and checking the output is real — a PNG whose
+header parses, a WAV that opens, an actual transcription. Not "the command
+exited zero". Full per-model status in [docs/models.md](docs/models.md), test
+results in [VALIDATION.md](VALIDATION.md).
+
+| Task | Model | Size | Measured |
+|---|---|---|---|
+| Coding agent | `Qwen3-Coder-Next-4bit` | 44.9 GB | Drove an offline opencode edit, correct code in ~30 s |
+| Coding, fast | `Qwen3-Coder-30B-A3B` | 17.2 GB | 95–114 tok/s |
+| Vision | `Qwen3.5-122B-A10B-5bit` | 84.9 GB | 16 s — an 85 GB model runs fine |
+| Vision, small | `GLM-OCR-8bit` | 1.6 GB | 3 s, reads text from images |
+| Image gen | `FLUX.2-Klein-4B` | 6.6 GB | 1024² in 6–11 s, 13.3 GB peak |
+| Image gen, better | `krea-2-turbo-bf16` | 34.2 GB | 1024² in 44 s, 41.7 GB peak |
+| Image edit | `qwen-image-edit-2511-bf16` | 56.6 GB | 86 s–7 min, 58.5 GB peak |
+| Speech both ways | `Kokoro` + `parakeet` | 2.9 GB | Round-trips a sentence verbatim |
+| Music | `MiniMax-Music3` | 13.9 GB | 21 s of 44.1 kHz stereo in 58 s |
+| Video | `Wan2.2-TI2V-5B` | 19.6 GB | 3.4 s at 1280×704 in ~19 min |
+| Embeddings | `Qwen3-Embedding-0.6B` | 0.7 GB | 1024-dim |
+
+Image editing is the standout: given a photo and "change the bicycle from red
+to bright yellow, keep everything else identical", it recoloured only the frame
+and left the saddle, bottle cage, tyre walls and background intact.
+
+**Don't scale up speech models.** `parakeet` at 2.5 GB beats every larger MLX
+ASR model on word error rate — the 1.1B is 47% *worse* on long-form. Bigger
+buys voice cloning, not quality.
+
+## What doesn't work
+
+| | |
+|---|---|
+| `gpt-oss-120b` via opencode | Tool calling works after `llmctl patch-mlx-lm`; opencode still rejects it because harmony channel markers leak into `content`. Raw API is fine |
+| Speech out from omni models | Qwen3-Omni ships the talker weights but mlx-vlm defines no `generate_audio`. Use Kokoro |
+| `/images/generations` on the gen server | Only accepts canonical `black-forest-labs/*` ids. Use `gen run image` |
+| `ideogram-4` | Licence-gated on HuggingFace; accept it on the model page |
+| `mlx-gen`, PyPI `mlx-video` | One downgrades mlx; the other is an unrelated package |
+
+## Memory reality
+
+| | |
+|---|---|
+| Installed | 128 GB |
+| GPU working-set ceiling | **115.4 GB** |
+| Plan against | **~100 GB** |
+
+Crossing it swaps, and not gradually — same prompt and seed, bf16 at
+118.55 GiB peak took **730.96 s** against INT8 at 67.63 GiB in **70.54 s**.
+10.4×, from paging.
+
+Context cost is architectural, not size-based: Qwen3-Coder-Next (80B) is **4×
+cheaper per context token** than the 30B, because only 12 of its 48 layers hold
+a KV cache. For long agent sessions the bigger model is the cheaper one.
+
+`./llmctl.sh host` reports your machine. Detail:
+[docs/hardware.md](docs/hardware.md).
+
+## Five things that save hours
+
+1. **A downloaded model is not a working model.** `hf download` exited 0 on a
+   download 28 GB short, and a failed pull leaves the directory and
+   `config.json` behind. Run `./llmctl.sh verify`.
+2. **Tool calling is a hard gate and fails silently.** Check before spending a
+   download: `python apple-m-series/m5-128gb/check-tool-parser.py <repo-id>`.
+3. **Don't switch models inside one server.** ~3× throughput penalty until
+   restart (95–114 tok/s → 36–38). Restart, or use two ports.
+4. **`htop` can't see MLX memory.** Weights live in Metal buffers macOS
+   excludes from RSS — 16 GB RSS while holding 42 GB. Use
+   `./llmctl.sh monitor`.
+5. **Download serially.** Six parallel pulls saturated the link and four
+   failed.
+
+## What to download first
+
+| Step | Models | Size | Gets you |
+|---|---|---|---|
+| 1 | `Qwen3-Coder-30B-A3B` | 17 GB | A working coding agent |
+| 2 | `FLUX.2-Klein-4B` + `Kokoro` + `parakeet` | 10 GB | Images and speech |
+| 3 | `Qwen3-Coder-Next` | 45 GB | The better coding model for long sessions |
+| 4 | `GLM-OCR` or `Qwen3-VL-30B` | 2–34 GB | Reading screenshots and documents |
+| 5 | `qwen-image-edit-2511` | 57 GB | Instruction-guided image editing |
+| 6 | `Qwen3.5-122B-5bit` | 85 GB | Best vision quality |
+
+Steps 1–2 are ~27 GB and already useful. The full set here is ~480 GB.
+
 
 ## Layout
 
@@ -152,7 +237,6 @@ A HuggingFace token is read from `$HF_TOKEN`, `$HF_TOKEN_FILE`, then
 | [docs/hardware.md](docs/hardware.md) | Memory ceiling, KV cache, context, measured throughput |
 | [docs/models.md](docs/models.md) | Every model: size, runtime, status, known failures |
 | [VALIDATION.md](VALIDATION.md) | Generated per-model test results |
-| [REPORT.md](REPORT.md) | Team-facing write-up |
 | [AGENTS.md](AGENTS.md) | Rules for agents working in this repo |
 
 ## NVIDIA
