@@ -1090,6 +1090,8 @@ def patch_mlx_lm(
     ]
 
     if undo:
+        reverted, why = _unpatch_server_flush(site)
+        console.print(("[green]reverted[/] " if reverted else "[dim]skipped[/] ") + why)
         if dst.exists():
             dst.unlink()
             console.print(f"removed {dst}")
@@ -1105,6 +1107,9 @@ def patch_mlx_lm(
         raise typer.Exit(1)
     shutil.copy2(src, dst)
     console.print(f"installed {dst}")
+
+    applied, why = _patch_server_flush(site)
+    console.print(("[green]patched[/] " if applied else "[dim]skipped[/] ") + why)
 
     if not targets:
         console.print("[yellow]no gpt-oss model cached; nothing to configure[/]")
@@ -1145,3 +1150,53 @@ def _set_tool_parser(repo_id: str, value: str | None) -> bool:
         cfg.unlink()
     cfg.write_text(json.dumps(data, indent=2) + "\n")
     return True
+
+
+def _flush_spec():
+    import importlib.util
+    from pathlib import Path as P
+
+    spec_path = P(__file__).resolve().parent / "tool_parsers" / "server_flush.patch.py"
+    spec = importlib.util.spec_from_file_location("_flush_spec", spec_path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _patch_server_flush(site) -> tuple[bool, str]:
+    """Make mlx-lm flush tool text when a call ends on an EOS token."""
+    f = site / "server.py"
+    src = f.read_text()
+    spec = _flush_spec()
+    if spec.MARKER in src:
+        return False, "server.py already patched"
+    backup = f.with_suffix(".py.llmctl-orig")
+    missing = [i for i, (old, _) in enumerate(spec.EDITS) if old not in src]
+    if missing:
+        return False, (
+            f"server.py does not match the expected source (edits {missing} not found) "
+            "— mlx-lm probably changed; not touching it"
+        )
+    if not backup.exists():
+        backup.write_text(src)
+    for old, new in spec.EDITS:
+        src = src.replace(old, new, 1)
+    f.write_text(src)
+    return True, f"server.py (backup at {backup.name})"
+
+
+def _unpatch_server_flush(site) -> tuple[bool, str]:
+    f = site / "server.py"
+    backup = f.with_suffix(".py.llmctl-orig")
+    if backup.exists():
+        f.write_text(backup.read_text())
+        backup.unlink()
+        return True, "server.py restored from backup"
+    spec = _flush_spec()
+    src = f.read_text()
+    if spec.MARKER not in src:
+        return False, "server.py not patched"
+    for old, new in spec.EDITS:
+        src = src.replace(new, old, 1)
+    f.write_text(src)
+    return True, "server.py un-patched in place"

@@ -174,7 +174,17 @@ def scan_cache() -> dict[str, Model]:
                 m.runtime = "other"
         else:
             m.runtime = "other"
-        m.tool_parser = _infer_parser(_chat_template(snap))
+        # An explicit tool_parser_type in the model's tokenizer_config wins:
+        # that is the key mlx-lm itself honours, and it is how a parser that
+        # template-sniffing cannot detect (harmony/gpt-oss) gets selected.
+        explicit = None
+        tc = glob.glob(snap + "tokenizer_config.json")
+        if tc:
+            try:
+                explicit = json.loads(Path(tc[0]).read_text()).get("tool_parser_type")
+            except (OSError, json.JSONDecodeError):
+                explicit = None
+        m.tool_parser = explicit or _infer_parser(_chat_template(snap))
         out[repo.repo_id] = m
     return out
 

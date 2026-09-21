@@ -106,35 +106,36 @@ def parse_all_tool_calls(model_output: str, tools: Any | None = None) -> list[di
 
 # STATUS on mlx-lm 0.31.3
 # ----------------------
-# This parser is correct and unit-tested, and the tokenizer picks it up:
-# has_tool_calling becomes True and tool_parser(...) returns the right
-# {name, arguments}. It still does not reach the client, for a reason in
-# mlx-lm's server rather than here.
+# TOOL CALLING WORKS with `llmctl patch-mlx-lm`. Verified:
 #
-# server.py collects generated text by state:
+#   finish_reason: tool_calls
+#   tool_calls[0]: read_file({"path": "src/main.py"})
 #
-#     if   gen.state == "reasoning": reasoning_text += gen.text
-#     elif gen.state == "tool":      tool_text      += gen.text
-#     elif gen.state == "normal":
-#         if prev_state == "tool": tool_calls.append(tool_text)   # flush
+# Two things were needed. This parser, and a two-line fix to server.py
+# (see server_flush.patch.py): gpt-oss ends a tool call with <|call|>, which
+# its generation_config.json also declares as an EOS token — and mlx-lm honours
+# that — so <|call|> matches both the tool-exit edge and a stop edge. One trie
+# per state means one match, the stop wins, the state becomes None, and the
+# accumulated tool text was dropped because the flush only fired on the
+# transition to "normal".
 #
-# A tool region is therefore only flushed by transitioning back to "normal".
-# The stop transitions target state None, which matches no branch — so the
-# accumulated tool_text is dropped and the end-of-loop flush
-# (`if prev_state == "tool"`) also fails because prev_state is None.
+# Note also that marker matching is at the TOKEN level: "to=functions." alone
+# is [935, 28, 44580, 13] but in a real generation [316, 28, 44580, 7211, …],
+# so only special tokens match reliably. Hence <|start|> (200006).
 #
-# gpt-oss ends a tool call with EOS (<|return|>) and does not emit <|call|>
-# under this template, so the region is always closed by a stop. Setting
-# tool_call_end to <|return|> does not help: server.py builds
-# transitions["tool"] = [(te, "normal")] and then appends the stop edges, and
-# both carry the same token sequence, so the Aho-Corasick trie keeps one of
-# them — the stop. SequenceStateMachine's own docstring shows tool_end mapping
-# to None, which is consistent with the stop winning.
+# STILL BROKEN: opencode rejects the responses, because the harmony *channel*
+# markers leak into message.content:
 #
-# So: the MODEL supports tool calling and emits well-formed calls; mlx-lm
-# cannot deliver them when the call is terminated by EOS. Fixing it needs
-# either an upstream change (flush pending tool_text when the state goes to
-# None) or a translating proxy in front of the server.
+#   "You have passed a message containing <|channel|> tags in the content
+#    field. Instead ... pass analysis messages in the 'thinking' field, and
+#    final messages in the 'content' field."
 #
-# Every other coding model in the catalog has a working parser, so this is
-# gpt-oss-specific.
+# That is a separate root cause. mlx-lm's _infer_thinking() only recognises
+# <think>/</think>, <longcat_think>, and a `<|channel>`/`<channel|>` pair whose
+# spelling differs from gpt-oss's `<|channel|>` — so analysis is never routed
+# to reasoning_text. There is no config override; it is called unconditionally.
+# Fixing it properly needs a channel-aware state machine, which is what
+# upstream ml-explore/mlx-lm#1867 implements.
+#
+# So today: gpt-oss tool-calls correctly over the raw API, and is not yet
+# usable through opencode. Every other coding model in the catalog is.

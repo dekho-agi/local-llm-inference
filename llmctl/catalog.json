@@ -49,7 +49,7 @@
       "profiles": [
         "m5-128gb"
       ],
-      "notes": "Tool calling: the MODEL works and emits well-formed harmony calls (to=functions.NAME + <|constrain|>json + JSON args). mlx-lm 0.31.3 cannot deliver them: it ships no harmony parser, and its server drops accumulated tool text when the region is closed by EOS rather than a distinct end token -- gpt-oss ends calls with <|return|>, not <|call|>. A working parser is in llmctl/tool_parsers/harmony.py; the remaining blocker is upstream. Its published evals ran at this MXFP4 quantization. SWE-bench 62.4."
+      "notes": "Tool calling WORKS after `llmctl patch-mlx-lm` (harmony parser + a two-line server.py flush fix): finish_reason=tool_calls with correct arguments over the raw API. NOT yet usable via opencode: harmony channel markers leak into message.content and opencode rejects them -- a separate mlx-lm gap (_infer_thinking does not know gpt-oss's <|channel|> spelling), tracked upstream as ml-explore/mlx-lm#1867. Published evals ran at this MXFP4 quantization. SWE-bench 62.4."
     },
     "mlx-community/GLM-4.5-Air-4bit": {
       "label": "GLM-4.5-Air 106B-A12B",
