@@ -171,7 +171,12 @@ def check_text(m: catalog.Model, workdir: Path, timeout: int = 1800) -> Result:
 
 # ───────────────────────── generative models ─────────────────────────
 def _gen_cmd(
-    m: catalog.Model, klass: str, workdir: Path, out: Path, prompt: str | None, inp: str | None
+    m: catalog.Model,
+    klass: str,
+    workdir: Path,
+    out: Path | None,
+    prompt: str | None,
+    inp: str | None,
 ) -> list[str] | None:
     spec = gen.SPECS.get(klass)
     if not spec:
@@ -184,7 +189,16 @@ def _gen_cmd(
     except Exception:
         pass
     try:
-        return gen.build_command(spec, m.repo_id, prompt, inp, str(out), entry_override=entry)
+        # str(None) would pass the literal "None" as an output path, which is
+        # how the omni checks ended up requesting audio they cannot produce.
+        return gen.build_command(
+            spec,
+            m.repo_id,
+            prompt,
+            inp,
+            str(out) if out is not None else None,
+            entry_override=entry,
+        )
     except (ValueError, RuntimeError):
         return None
 
@@ -216,7 +230,12 @@ def check_generative(m: catalog.Model, workdir: Path, assets: dict, timeout: int
     elif k == "vlm":
         prompt, inp = "Describe this image in one sentence.", assets.get("image")
     elif k == "omni":
+        # Text only, deliberately: passing --output makes the runner request
+        # --output-modality audio, which mlx-vlm 0.7.1 refuses for every omni
+        # model here (no generate_audio). Testing the audio path would mark
+        # models that work perfectly well for text+vision as failures.
         prompt, inp = "Describe this image in one sentence.", assets.get("image")
+        out = None
     elif k == "tts":
         prompt = "The quick brown fox jumps over the lazy dog."
         out = workdir / f"tts-{m.repo_id.split('/')[-1]}"
@@ -231,7 +250,11 @@ def check_generative(m: catalog.Model, workdir: Path, assets: dict, timeout: int
     elif k == "embed":
         return _check_embed(m, r)
 
-    cmd = _gen_cmd(m, k, workdir, out, prompt, inp)
+    cmd = (
+        _gen_cmd(m, k, workdir, out, prompt, inp)
+        if out is not None
+        else _gen_cmd(m, k, workdir, None, prompt, inp)
+    )
     if not cmd:
         r.detail = "no runner could be built (runtime missing or bad args)"
         return r

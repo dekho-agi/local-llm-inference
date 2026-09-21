@@ -7,6 +7,10 @@ isn't available — on a plane, on a locked-down network, or just off the clock.
 One command detects your hardware, picks a model that fits, serves it on an
 OpenAI-compatible endpoint, and registers it in opencode automatically.
 
+**New here, or sharing with a colleague?** Read
+[REPORT.md](REPORT.md) — a practical write-up of what a 128 GB MacBook can and
+cannot do, with measured numbers and the gotchas that cost the most time.
+
 ```bash
 ./llmctl.sh host                # what machine is this, and what fits
 ./llmctl.sh pull                # download a model (pick from a list)
