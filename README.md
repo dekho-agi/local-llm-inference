@@ -254,7 +254,7 @@ pip install -e ".[test]"
 pytest && ruff check llmctl tests && ruff format --check llmctl tests
 ```
 
-81 tests, no GPU required — they avoid importing `mlx` so CI runs on Linux.
+80 tests, no GPU required — they avoid importing `mlx` so CI runs on Linux.
 They cover KV arithmetic anchored to measured values, port allocation, registry
 pruning, the opencode manifest contract, `vmmap` parsing, and catalog
 invariants. GPU-dependent checks live in `llmctl validate` and `smoke-test.py`.

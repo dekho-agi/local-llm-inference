@@ -3,6 +3,7 @@
 import json
 import os
 import subprocess
+import sys
 from dataclasses import replace
 
 import typer
@@ -25,6 +26,26 @@ console = Console()
 
 
 # ─────────────────────────── shared helpers ───────────────────────────
+
+
+def _require_tty(what: str, candidates: list[str] | None = None) -> None:
+    """Fail fast instead of blocking on a prompt when there is no terminal.
+
+    opencode-driven and scripted callers are the repo's stated integration
+    target, and they are exactly the case that hits an interactive picker.
+    A Rich prompt on a closed stdin blocks with no timeout, so a missing
+    argument turned into a hang rather than an error.
+    """
+    if sys.stdin.isatty():
+        return
+    console.print(f"[red]{what} requires a choice, and stdin is not a terminal.[/]")
+    if candidates:
+        console.print("pass one explicitly:")
+        for c in candidates[:12]:
+            console.print(f"  {c}")
+    raise typer.Exit(2)
+
+
 def _fit(m: catalog.Model, budget: float, ctx: int | None = None) -> str:
     total = m.total_gb(ctx)
     if total is None:
@@ -69,6 +90,7 @@ def _choose_model(models: list[catalog.Model], prompt: str) -> catalog.Model:
             "[green]yes[/]" if m.agentic else "[red]no[/]",
         )
     console.print(t)
+    _require_tty("this command")
     idx = IntPrompt.ask(
         prompt, choices=[str(i) for i in range(1, len(models) + 1)], show_choices=False
     )
@@ -101,6 +123,7 @@ def _choose_server(prompt: str) -> list[servers.Server]:
         )
     t.add_row("0", "—", "[bold]all of them[/]", "", "", "")
     console.print(t)
+    _require_tty("this command")
     idx = IntPrompt.ask(
         prompt, choices=[str(i) for i in range(0, len(live) + 1)], show_choices=False
     )
@@ -123,7 +146,14 @@ def host():
             f"[bold]{h.working_set_gb:.1f} GB[/]  (the real ceiling, not total RAM)",
         )
     t.add_row("plan against", f"[bold]{h.budget_gb:.1f} GB[/]  (working set less OS headroom)")
-    t.add_row("profile", f"{h.profile}  [dim]{h.profile_dir or ''}[/]")
+    if h.profile_exact:
+        t.add_row("profile", f"{h.profile}  [dim]{h.profile_dir or ''}[/]")
+    else:
+        t.add_row(
+            "profile",
+            f"[yellow]{h.profile}[/] (nearest match, not built for "
+            f"{h.memory_gb:.0f} GB)  [dim]{h.profile_dir or ''}[/]",
+        )
     console.print(t)
     console.print(
         "\n[dim]mlx-lm raises the wired limit to the working set itself; no sudo sysctl needed.[/]"
@@ -206,7 +236,16 @@ def start(
     if model:
         m = catalog.find(model)
         if not m:
-            console.print(f"[red]no unique match for[/] {model!r}")
+            # zero matches and several matches need opposite next actions, so
+            # they must not share an error message.
+            hits = [x.repo_id for x in catalog.load() if model.lower() in x.repo_id.lower()]
+            if not hits:
+                console.print(f"[red]no model matches[/] {model!r}")
+                console.print("[dim]llmctl models --all  to list the catalog[/]")
+            else:
+                console.print(f"[red]{model!r} is ambiguous[/] — {len(hits)} matches:")
+                for h in hits:
+                    console.print(f"  {h}")
             raise typer.Exit(1)
         if not m.cached:
             console.print(
@@ -405,6 +444,7 @@ def pull(
                 mm.role or "—",
             )
         console.print(t)
+        _require_tty("this command")
         idx = IntPrompt.ask(
             "pull which model",
             choices=[str(i) for i in range(1, len(uncached) + 1)],
@@ -465,6 +505,7 @@ def cache(
         console.print("[dim]--prune to delete a model[/]")
         return
 
+    _require_tty("this command")
     idx = IntPrompt.ask(
         "delete which model (0 to cancel)",
         choices=[str(i) for i in range(0, len(repos) + 1)],
@@ -891,6 +932,7 @@ def _choose_model_generic(models, prompt: str):
     for i, m in enumerate(models, 1):
         t.add_row(str(i), m.label or m.repo_id, f"{(m.disk_gb or m.size_gb or 0):.1f}G")
     console.print(t)
+    _require_tty("this command")
     idx = IntPrompt.ask(
         prompt, choices=[str(i) for i in range(1, len(models) + 1)], show_choices=False
     )

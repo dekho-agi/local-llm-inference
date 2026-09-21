@@ -584,4 +584,21 @@ def merge_reports(previous_md: str, results: list[Result], host: str) -> str:
         out_lines.append(line)
         if line.startswith("|---|---|---|---|---|---|---|"):
             out_lines.extend(merged_rows)
-    return "\n".join(out_lines) + "\n"
+    merged = "\n".join(out_lines) + "\n"
+
+    # Recount from the merged table. The headline was previously carried over
+    # from the new (often partial) run while the table held every row, so a
+    # run of 5 models produced "4 passed / 5 failed" above a 28-row table.
+    counts = {"PASS": 0, "FAIL": 0, "NOT DOWNLOADED": 0, "SKIP": 0}
+    for line in merged.splitlines():
+        if not line.startswith("| `"):
+            continue
+        for key in ("NOT DOWNLOADED", "PASS", "FAIL", "SKIP"):
+            if f" {key} " in line or line.rstrip().endswith(key):
+                counts[key] += 1
+                break
+    headline = (
+        f"**{counts['PASS']} passed · {counts['FAIL']} failed · "
+        f"{counts['NOT DOWNLOADED']} not downloaded · {counts['SKIP']} skipped**"
+    )
+    return re.sub(r"^\*\*\d+ passed .*?\*\*$", headline, merged, count=1, flags=re.M)

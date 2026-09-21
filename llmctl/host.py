@@ -23,6 +23,9 @@ class Host:
     macos: str
     profile: str  # which target directory applies
     profile_dir: str | None
+    # False => nearest match only; this machine's memory is not what the
+    # profile was built for, so its model list is a starting point, not a fit.
+    profile_exact: bool = True
 
     @property
     def budget_gb(self) -> float:
@@ -76,7 +79,7 @@ def detect() -> Host:
         ["sw_vers", "-productVersion"], capture_output=True, text=True
     ).stdout.strip()
 
-    profile, profile_dir = _pick_profile(memory_gb)
+    profile, profile_dir, profile_exact = _pick_profile(memory_gb)
     return Host(
         chip=chip,
         model=model,
@@ -87,13 +90,14 @@ def detect() -> Host:
         macos=macos,
         profile=profile,
         profile_dir=profile_dir,
+        profile_exact=profile_exact,
     )
 
 
-def _pick_profile(memory_gb: float) -> tuple[str, str | None]:
+def _pick_profile(memory_gb: float) -> tuple[str, str | None, bool]:
     """Map memory to a target directory, preferring an exact-ish match."""
     if not APPLE_DIR.exists():
-        return ("unknown", None)
+        return ("unknown", None, False)
     candidates = []
     for d in sorted(APPLE_DIR.iterdir()):
         if not d.is_dir() or d.name == "common":
@@ -104,10 +108,14 @@ def _pick_profile(memory_gb: float) -> tuple[str, str | None]:
                 candidates.append((int(part[:-2]), d.name))
                 break
     if not candidates:
-        return ("unknown", None)
-    # Largest profile this machine can satisfy. If it satisfies none, fall
-    # back to the smallest rather than the largest — a 8 GB machine must not
-    # be handed the 128 GB profile's model list.
-    fits = [c for c in candidates if c[0] <= memory_gb + 1]
-    chosen = max(fits, key=lambda c: c[0]) if fits else min(candidates, key=lambda c: c[0])
-    return (chosen[1], str(APPLE_DIR / chosen[1]))
+        return ("unknown", None, False)
+    # Nearest profile by memory, not "largest that fits".
+    #
+    # "Largest that fits" silently handed a 96 GB machine the 16 GB MacBook
+    # Air profile — its 3-model list and ~10 GB budget — because 128 did not
+    # fit and 16 did. Nearest-match at least lands on the right order of
+    # magnitude, and `exact` tells the caller whether to trust the model list
+    # or treat it as a starting point.
+    nearest = min(candidates, key=lambda c: abs(c[0] - memory_gb))
+    exact = abs(nearest[0] - memory_gb) <= 1
+    return (nearest[1], str(APPLE_DIR / nearest[1]), exact)

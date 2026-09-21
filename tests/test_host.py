@@ -10,18 +10,33 @@ from llmctl.host import Host, _pick_profile
 
 
 @pytest.mark.parametrize(
-    "memory_gb,expected",
+    "memory_gb,expected,exact",
     [
-        (128, "m5-128gb"),  # the M5 Max
-        (16, "m2-16gb"),  # the M2 Air
-        (64, "m2-16gb"),  # between profiles: largest that fits
-        (8, "m2-16gb"),  # below every profile: fall back to smallest
+        (128, "m5-128gb", True),  # the M5 Max
+        (16, "m2-16gb", True),  # the M2 Air
+        (96, "m5-128gb", False),  # nearest, and flagged inexact
+        (36, "m2-16gb", False),  # nearest, and flagged inexact
+        (8, "m2-16gb", False),  # below every profile
     ],
 )
-def test_profile_selection(memory_gb, expected):
-    profile, path = _pick_profile(memory_gb)
+def test_profile_selection(memory_gb, expected, exact):
+    """Nearest profile by memory, with an honest exact flag.
+
+    Regression: this test previously asserted that 64 GB should map to the
+    16 GB profile, describing "largest that fits" as correct. It is not — a
+    96 GB machine was handed a MacBook Air's 3-model list and ~10 GB budget.
+    The test encoded the bug, so CI would have blocked the fix.
+    """
+    profile, path, is_exact = _pick_profile(memory_gb)
     assert profile == expected
     assert path and path.endswith(expected)
+    assert is_exact is exact
+
+
+def test_inexact_profile_is_flagged_not_silent():
+    """A machine between profiles must be told the list is a guess."""
+    _, _, exact = _pick_profile(64)
+    assert exact is False
 
 
 def test_budget_prefers_the_gpu_working_set_over_total_ram():

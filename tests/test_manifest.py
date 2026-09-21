@@ -113,3 +113,40 @@ def test_manifest_models_are_only_servable_text_models():
         assert "Kokoro" not in repo
         assert "parakeet" not in repo
         assert "Embedding" not in repo
+
+
+def test_validation_headline_matches_its_own_table():
+    """VALIDATION.md's summary must agree with the table it summarises.
+
+    Regression: merge_reports carried the headline over from the new (often
+    partial) run while the table accumulated every row, so a 5-model run
+    printed "4 passed / 5 failed" above a 28-row table — in the one document
+    meant to make the project's claims credible.
+    """
+    import re
+    from pathlib import Path as P
+
+    md = P(__file__).resolve().parent.parent / "VALIDATION.md"
+    if not md.exists():
+        import pytest
+
+        pytest.skip("VALIDATION.md not generated yet")
+    text = md.read_text()
+
+    counts = {"PASS": 0, "FAIL": 0, "NOT DOWNLOADED": 0, "SKIP": 0}
+    for line in text.splitlines():
+        if not line.startswith("| `"):
+            continue
+        for key in ("NOT DOWNLOADED", "PASS", "FAIL", "SKIP"):
+            if f" {key} " in line:
+                counts[key] += 1
+                break
+
+    m = re.search(r"^\*\*(\d+) passed · (\d+) failed", text, re.M)
+    assert m, "no headline found"
+    assert int(m.group(1)) == counts["PASS"], (
+        f"headline says {m.group(1)} passed, table has {counts['PASS']}"
+    )
+    assert int(m.group(2)) == counts["FAIL"], (
+        f"headline says {m.group(2)} failed, table has {counts['FAIL']}"
+    )

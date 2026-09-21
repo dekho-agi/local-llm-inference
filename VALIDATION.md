@@ -6,7 +6,7 @@ Host: MacBook Pro · Apple M5 Max · 128 GB (115.4 GB GPU working set) · macOS 
 
 Every model below was **downloaded, loaded, and run** on this machine. A row passes only if it produced a usable artifact — a parseable PNG, an openable WAV, a real transcription, a non-empty completion — not merely because a process exited zero.
 
-**4 passed · 5 failed · 0 not downloaded · 1 skipped**
+**14 passed · 13 failed · 0 not downloaded · 1 skipped**
 
 
 ## Summary

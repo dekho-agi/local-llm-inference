@@ -3,14 +3,20 @@ name = "llmctl"
 version = "0.1.0"
 description = "Toolkit for local LLM inference, wired into opencode"
 requires-python = ">=3.11"
-# Runtime deps all arrive with mlx-lm, which is platform-specific (Apple
-# silicon). They are declared as an optional extra so tests can run in CI on
-# Linux without pulling Metal wheels.
-dependencies = []
+# The CLI itself needs these at runtime and they are pure Python, so they
+# belong here, not in an extra: a bare `pip install -e .` previously left
+# typer/rich missing and every command died with ModuleNotFoundError.
+# mlx-lm is NOT here — it is Apple-silicon only, so it stays in the `apple`
+# extra and CI on Linux can still install this package.
+dependencies = [
+  "typer>=0.12",
+  "rich>=13",
+  "huggingface_hub>=1.0",
+]
 
 [project.optional-dependencies]
 apple = ["mlx-lm>=0.31.3", "huggingface_hub>=1.0"]
-test = ["pytest>=8", "typer>=0.12", "rich>=13", "huggingface_hub>=1.0"]
+test = ["pytest>=8"]
 
 [project.scripts]
 llmctl = "llmctl.cli:app"
