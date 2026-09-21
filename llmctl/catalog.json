@@ -49,7 +49,7 @@
       "profiles": [
         "m5-128gb"
       ],
-      "notes": "NO TOOL CALLING: mlx-lm 0.31.3 has no harmony parser, and it fails silently (finish_reason=stop, raw syntax in content). Its published evals did run at this MXFP4 quantization, unlike every other model here. SWE-bench 62.4."
+      "notes": "Tool calling: the MODEL works and emits well-formed harmony calls (to=functions.NAME + <|constrain|>json + JSON args). mlx-lm 0.31.3 cannot deliver them: it ships no harmony parser, and its server drops accumulated tool text when the region is closed by EOS rather than a distinct end token -- gpt-oss ends calls with <|return|>, not <|call|>. A working parser is in llmctl/tool_parsers/harmony.py; the remaining blocker is upstream. Its published evals ran at this MXFP4 quantization. SWE-bench 62.4."
     },
     "mlx-community/GLM-4.5-Air-4bit": {
       "label": "GLM-4.5-Air 106B-A12B",

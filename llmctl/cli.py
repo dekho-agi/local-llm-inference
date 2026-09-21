@@ -1051,3 +1051,97 @@ def validate_cmd(
             path.write_text(md)
         console.print(f"wrote {path}")
     raise typer.Exit(1 if nfail else 0)
+
+
+@app.command("patch-mlx-lm")
+def patch_mlx_lm(
+    undo: bool = typer.Option(False, "--undo", help="Remove the parser and the config key."),
+):
+    """Install the harmony tool-call parser so gpt-oss can drive opencode.
+
+    mlx-lm ships no parser for OpenAI's harmony format, so gpt-oss is reported
+    as tool-incapable and its (correct) tool calls arrive as raw text. Two
+    additive changes fix that:
+
+      1. copy llmctl/tool_parsers/harmony.py into mlx_lm/tool_parsers/
+      2. set "tool_parser_type": "harmony" in the model's tokenizer_config.json
+
+    mlx-lm reads that key from the model itself, so selection needs no change
+    to mlx-lm's source. Idempotent, and reversible with --undo.
+    """
+    import shutil
+    from pathlib import Path as P
+
+    try:
+        import mlx_lm
+
+        site = P(mlx_lm.__file__).parent
+    except ImportError:
+        console.print("[red]mlx-lm not importable in this environment[/]")
+        raise typer.Exit(1) from None
+
+    src = P(__file__).resolve().parent / "tool_parsers" / "harmony.py"
+    dst = site / "tool_parsers" / "harmony.py"
+
+    targets = [
+        m
+        for m in catalog.load(include_uncached=False)
+        if m.arch == "GptOssForCausalLM" or "gpt-oss" in m.repo_id.lower()
+    ]
+
+    if undo:
+        if dst.exists():
+            dst.unlink()
+            console.print(f"removed {dst}")
+        for m in targets:
+            n = _set_tool_parser(m.repo_id, None)
+            if n:
+                console.print(f"cleared tool_parser_type for {m.repo_id}")
+        console.print("[green]reverted[/]")
+        return
+
+    if not src.exists():
+        console.print(f"[red]parser missing: {src}[/]")
+        raise typer.Exit(1)
+    shutil.copy2(src, dst)
+    console.print(f"installed {dst}")
+
+    if not targets:
+        console.print("[yellow]no gpt-oss model cached; nothing to configure[/]")
+        return
+    for m in targets:
+        if _set_tool_parser(m.repo_id, "harmony"):
+            console.print(f"set tool_parser_type=harmony for {m.repo_id}")
+        else:
+            console.print(f"[yellow]could not update tokenizer_config for {m.repo_id}[/]")
+
+    console.print("\nrestart the server for it to take effect:")
+    console.print("  [bold]llmctl stop --all && llmctl start gpt-oss-120b[/]")
+
+
+def _set_tool_parser(repo_id: str, value: str | None) -> bool:
+    """Write (or clear) tool_parser_type in a cached model's tokenizer_config."""
+    import glob as _glob
+    from pathlib import Path as P
+
+    safe = repo_id.replace("/", "--")
+    hits = sorted(_glob.glob(str(P.home() / f".cache/huggingface/hub/models--{safe}/snapshots/*/")))
+    if not hits:
+        return False
+    cfg = P(hits[-1]) / "tokenizer_config.json"
+    if not cfg.exists():
+        return False
+    try:
+        data = json.loads(cfg.read_text())
+    except json.JSONDecodeError:
+        return False
+    if value is None:
+        data.pop("tool_parser_type", None)
+    else:
+        data["tool_parser_type"] = value
+    # the cached file is a symlink into blobs/; replace it rather than write
+    # through, so the shared blob is not mutated for other revisions
+    if cfg.is_symlink():
+        cfg.unlink()
+    cfg.write_text(json.dumps(data, indent=2) + "\n")
+    return True

@@ -141,7 +141,7 @@ Worth knowing before you spend an afternoon on it.
 
 | Thing | Why |
 |---|---|
-| **`gpt-oss-120b` as a coding agent** | mlx-lm has no parser for its tool-call format. It fails **silently** — no error, raw `<\|channel\|>` syntax in the reply. Chat only. |
+| **`gpt-oss-120b` as a coding agent** | The *model* emits correct tool calls. mlx-lm has no parser for harmony format and, worse, drops tool text when a call ends at EOS — so they never reach the client. See `llmctl/tool_parsers/harmony.py`. Use another model. |
 | **Speech output from omni models** | Qwen3-Omni ships the audio weights (417 talker tensors), but mlx-vlm 0.7.1 has no `generate_audio`. Text and vision work. Use Kokoro for speech. |
 | **`index-tts2-mlx`** | Ships `config.yaml`; mlx-audio requires `config.json`. Use `mlx-community/IndexTTS-2-MLX` instead. |
 | **Image generation over the unified server** | `/images/generations` only accepts canonical `black-forest-labs/*` ids, not quantized repos. Use the CLI path. |
