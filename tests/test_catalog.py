@@ -45,12 +45,19 @@ def test_generative_models_are_not_marked_servable():
             )
 
 
-def test_gpt_oss_is_documented_as_lacking_tool_calling():
-    """A silent failure worth a regression test: it must stay flagged."""
+def test_gpt_oss_tool_calling_limitation_is_documented():
+    """The limitation is mlx-lm's, not the model's — the note must say so.
+
+    An earlier version of this test asserted "NO TOOL CALLING", which encoded
+    a wrong conclusion: the model emits correct harmony calls, and mlx-lm
+    cannot deliver them. See llmctl/tool_parsers/harmony.py.
+    """
     data = json.loads(CATALOG.read_text())["models"]
     entry = data["mlx-community/gpt-oss-120b-MXFP4-Q8"]
     assert entry["role"] == "chat-only"
-    assert "NO TOOL CALLING" in entry["notes"]
+    notes = entry["notes"]
+    assert "mlx-lm" in notes, "must attribute the limitation to the runtime"
+    assert "harmony" in notes.lower()
 
 
 def test_find_resolves_exact_and_unique_substring():

@@ -117,7 +117,8 @@ your own `opencode.json` always wins over discovery.
 
 opencode drives models through tool calls, and mlx-lm can only parse them for
 chat templates it has a parser for. `llmctl models` shows a `tools` column;
-anything `no` is chat-only. **`gpt-oss-120b` is the notable failure** — mlx-lm
+anything `no` is chat-only. **`gpt-oss-120b` is the notable case** — the model
+emits correct harmony tool calls, but mlx-lm
 ships no parser for its harmony format, and it fails *silently*: no error, and
 raw `<|channel|>commentary to=functions.…` syntax in the message content.
 
@@ -289,7 +290,7 @@ opencode run --model dekho-local-inference/mlx-community/Qwen3-Coder-Next-4bit \
 | `Devstral-Small-2-24B-Instruct-2512-4bit` | 15.1 GB | Dense, so no MoE routing variance |
 | `GLM-4.5-Air-4bit` | 60.2 GB | Heavier alternative, 106B/12B active |
 | `Qwen2.5-Coder-7B-Instruct-4bit` | 4.3 GB | Small machines, or leaving memory for generative work |
-| `gpt-oss-120b-MXFP4-Q8` | 63.4 GB | **Chat only — cannot tool-call**, so not usable as an agent |
+| `gpt-oss-120b-MXFP4-Q8` | 63.4 GB | **Chat only under mlx-lm.** The model tool-calls correctly; mlx-lm cannot deliver the calls |
 
 ### Run several at once
 
@@ -404,7 +405,7 @@ returns silent all-NaN vectors on mixed-length batches.
 
 | Attempt | Outcome |
 |---|---|
-| `gpt-oss-120b` as an opencode agent | mlx-lm has no parser for its harmony tool format, and it fails **silently** — raw syntax in the message content |
+| `gpt-oss-120b` as an opencode agent | mlx-lm ships no harmony parser, and drops tool text when a call ends at EOS. The model is fine — see `llmctl/tool_parsers/harmony.py` |
 | Speech out from `Qwen3-Omni` | The weights ship the talker, but mlx-vlm 0.7.1 defines no `generate_audio`. Use Kokoro |
 | `index-tts2-mlx` | Ships `config.yaml`; mlx-audio's loader requires `config.json` |
 | `/images/generations` on the unified server | Only accepts canonical `black-forest-labs/*` ids, not quantized repos. Use `gen run image` |
