@@ -843,34 +843,82 @@ def gen_setup():
     gen_doctor()
 
 
-@gen_app.command("run")
+_GEN_RUN_EPILOG = """\
+Examples:
+
+  ./llmctl.sh gen run video                      # asks for prompt, size, length, output
+
+  ./llmctl.sh gen run video "a red balloon rising" --size draft --seconds 3 -o b.mp4 -y
+
+  ./llmctl.sh gen run image "a lighthouse at dawn" -o l.png
+
+  ./llmctl.sh gen run tts "hello there" -o ./speech
+
+  ./llmctl.sh gen run video "a cat" --dry-run    # print the command, run nothing
+
+Anything after -- goes to the runtime unchanged:
+
+  ./llmctl.sh gen run video "a cat" -- --scheduler dpm++ --guide-scale 6
+
+On a terminal, anything you leave out is asked for, with a default — press
+Enter to accept it. -y skips the questions and uses the defaults.
+"""
+
+
+@gen_app.command(
+    "run",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+    epilog=_GEN_RUN_EPILOG,
+)
 def gen_run(
+    ctx: typer.Context,
     klass: str = typer.Argument(..., help="image, image-edit, vlm, omni, stt, tts, music, video"),
-    prompt: str | None = typer.Argument(None),
+    prompt: str | None = typer.Argument(None, help="What to generate. Asked for if omitted."),
     model: str | None = typer.Option(None, "--model", "-m", help="Repo id; default = cached pick."),
     input_path: str | None = typer.Option(None, "--input", "-i", help="Input image or audio."),
-    output: str | None = typer.Option(None, "--output", "-o"),
+    output: str | None = typer.Option(None, "--output", "-o", help="Output file."),
+    size: str | None = typer.Option(
+        None,
+        "--size",
+        help="video: draft (832x480, faster) or hd (1280x704). Default draft.",
+    ),
+    seconds: float | None = typer.Option(
+        None, "--seconds", help=f"video: clip length. Default {genmod.VIDEO_DEFAULT_SECONDS}."
+    ),
     lyrics: str | None = typer.Option(
-        None, "--lyrics", help="music: structured lyrics; default [instrumental]."
+        None, "--lyrics", help="music: structured lyrics; default \\[instrumental]."
     ),
     steps: int | None = typer.Option(
         None, "--steps", help="Inference steps, where the runtime supports it."
     ),
     seed: int | None = typer.Option(None, "--seed"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Use defaults; ask nothing."),
     dry_run: bool = typer.Option(False, "--dry-run", help="Print the command without running it."),
 ):
-    """Run a generative model. Use --dry-run to see the exact command first."""
+    """Run a generative model: image, speech, music, video and more."""
+    from datetime import datetime
+
+    from rich.prompt import FloatPrompt, Prompt
+
     runner = genmod.SPECS.get(klass)
     if not runner:
         console.print(f"[red]unknown class[/] {klass!r}; one of: {', '.join(genmod.SPECS)}")
         raise typer.Exit(1)
+    if size is not None and size not in genmod.VIDEO_SIZES:
+        console.print(f"[red]unknown size[/] {size!r}; one of: {', '.join(genmod.VIDEO_SIZES)}")
+        raise typer.Exit(1)
+    ask = sys.stdin.isatty() and not yes
 
     if model:
         m = catalog.find(model)
         repo = m.repo_id if m else model
     else:
         cands = [
-            x for x in catalog.load(include_uncached=False) if x.model_class == klass and x.ready
+            x
+            for x in catalog.load(include_uncached=False)
+            if x.model_class == klass
+            and x.ready
+            and not genmod.catalog_entry(x.repo_id).get("blocked")
         ]
         if not cands:
             console.print(
@@ -878,22 +926,62 @@ def gen_run(
                 f"llmctl pull, or see `llmctl models --all --class {klass}`"
             )
             raise typer.Exit(1)
+        if len(cands) > 1 and not ask:
+            console.print(f"[red]several {klass} models are cached[/]; pass one with -m:")
+            for x in cands:
+                console.print(f"  {x.repo_id}")
+            raise typer.Exit(1)
         m = _choose_model_generic(cands, f"which {klass} model") if len(cands) > 1 else cands[0]
         repo = m.repo_id
 
-    entry_override = ""
-    if m is not None:
-        import json as _json
+    meta = genmod.catalog_entry(repo)
+    if meta.get("blocked"):
+        console.print(f"[red]{repo} cannot run here[/]: {meta['blocked']}")
+        raise typer.Exit(1)
+    runner = genmod.spec_for(runner, meta)
 
-        from .paths import CATALOG
-
-        try:
-            entry_override = (
-                _json.loads(CATALOG.read_text())["models"].get(repo, {}).get("entry", "")
-            )
-        except Exception:
-            entry_override = ""
+    while runner.prompt_flag and not prompt and ask:
+        prompt = Prompt.ask("[bold]describe it[/]").strip()
     extra: list[str] = []
+
+    if runner.klass == "video":
+        if size is None:
+            size = genmod.VIDEO_DEFAULT_SIZE
+            if ask:
+                t = Table(box=None, pad_edge=False)
+                t.add_column("size", style="bold cyan")
+                t.add_column("pixels")
+                t.add_column("3.4 s clip takes", justify="right")
+                frames = genmod.frames_for(genmod.VIDEO_DEFAULT_SECONDS)
+                for name, (w, h) in genmod.VIDEO_SIZES.items():
+                    t.add_row(name, f"{w}x{h}", f"~{genmod.estimate_minutes(w, h, frames):.0f} min")
+                console.print(t)
+                size = Prompt.ask(
+                    "size", choices=list(genmod.VIDEO_SIZES), default=genmod.VIDEO_DEFAULT_SIZE
+                )
+        if seconds is None:
+            seconds = genmod.VIDEO_DEFAULT_SECONDS
+            if ask:
+                seconds = FloatPrompt.ask("length in seconds", default=seconds)
+        if seconds <= 0:
+            console.print("[red]--seconds must be positive[/]")
+            raise typer.Exit(1)
+        if output is None:
+            output = f"video-{datetime.now():%Y%m%d-%H%M%S}.mp4"
+            if ask:
+                output = Prompt.ask("save to", default=output)
+        w, h = genmod.VIDEO_SIZES[size]
+        frames = genmod.frames_for(seconds)
+        extra += genmod.video_args(w, h, frames)
+        est = genmod.estimate_minutes(w, h, frames)
+        console.print(
+            f"\n[bold]{m.label if m and m.label else repo}[/] · {w}x{h} · "
+            f"{frames / genmod.VIDEO_FPS:.1f} s ({frames} frames) → {output}"
+        )
+        console.print(f"[yellow]roughly {est:.0f} min; keep the Mac plugged in[/]")
+        if seconds > 5:
+            console.print("[dim]Wan 2.2 is trained on clips up to ~5 s; longer may drift.[/]")
+
     if steps is not None:
         extra += ["--steps", str(steps)]
     if seed is not None:
@@ -904,23 +992,20 @@ def gen_run(
             runner, defaults=[d for d in runner.defaults if d not in ("--lyrics", "[instrumental]")]
         )
         extra += ["--lyrics", lyrics]
+    extra += ctx.args
     try:
-        cmd = genmod.build_command(
-            runner, repo, prompt, input_path, output, entry_override=entry_override, extra=extra
-        )
+        cmd = genmod.build_command(runner, repo, prompt, input_path, output, extra=extra)
     except (ValueError, RuntimeError) as e:
         console.print(f"[red]{e}[/]")
         raise typer.Exit(1) from e
 
-    # markup=False: an argument like "[instrumental]" would otherwise be
-    # parsed as rich markup and silently disappear from the echoed command.
-    console.print(" ".join(cmd), markup=False, style="dim")
+    # Plain print: rich would re-wrap the command mid-path and mangle it for
+    # pasting, and would read "[instrumental]" as markup.
+    print("\n" + genmod.format_command(cmd) + "\n")
     if dry_run:
         return
-    if runner.klass == "video":
-        console.print(
-            "[yellow]video generation is slow (~23 min for 5s); plug in before starting[/]"
-        )
+    if ask and runner.klass == "video" and not Confirm.ask("start now?", default=True):
+        raise typer.Exit(0)
     raise typer.Exit(subprocess.call(cmd))
 
 

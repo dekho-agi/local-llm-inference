@@ -14,7 +14,12 @@ Two things make that awkward, and both are handled by data rather than code:
   2. mflux ships a console script per model family — mflux-generate-krea2,
      mflux-generate-ideogram4, mflux-generate-flux2, mflux-generate-qwen-edit —
      so the entrypoint depends on the model, not just the class. A generative
-     catalog entry may carry an "entry" field to say which.
+     catalog entry may carry an "entry" field to say which, and "model_flag" /
+     "model_is_path" when that script takes the model differently — mlx-video's
+     Wan script wants --model-dir, its LTX script --model-repo.
+
+A catalog entry may also carry "blocked": a reason the model cannot run with
+the installed runtimes. It is kept in the catalog as reference but never run.
 
 The runtimes live in a separate conda env (DEKHO_GEN_ENV, default
 `dekho-apple-gen`) so a dependency conflict here cannot break `llmctl start`.
@@ -23,7 +28,7 @@ The runtimes live in a separate conda env (DEKHO_GEN_ENV, default
 import json
 import os
 import subprocess
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 GEN_ENV = os.environ.get("DEKHO_GEN_ENV", "dekho-apple-gen")
@@ -211,7 +216,8 @@ SPECS: dict[str, Spec] = {
         # NOT mlx_vlm: its model dir holds only video_depth_anything, so Wan
         # and LTX fail at load even though the import succeeds. mlx-video
         # provides a console script per family, named in the catalog "entry":
-        # mlx_video.wan_2.generate / mlx_video.ltx_2.generate.
+        # mlx_video.wan_2.generate / mlx_video.ltx_2.generate. The two take
+        # the model differently; the catalog entry overrides model_flag.
         entry="mlx_video.wan_2.generate",
         model_flag="--model-dir",
         model_is_path=True,
@@ -265,8 +271,8 @@ def env_status() -> dict:
 def snapshot_dir(repo_id: str) -> str | None:
     """Local snapshot directory for a cached repo.
 
-    mlx-video takes --model-dir rather than a repo id, so the id has to be
-    resolved to the path the weights actually live at.
+    mlx-video's Wan script takes --model-dir rather than a repo id, so the id
+    has to be resolved to the path the weights actually live at.
     """
     import glob
 
@@ -275,6 +281,25 @@ def snapshot_dir(repo_id: str) -> str | None:
         glob.glob(str(Path.home() / f".cache/huggingface/hub/models--{safe}/snapshots/*/"))
     )
     return hits[-1].rstrip("/") if hits else None
+
+
+# Catalog fields that override a class Spec for one model.
+_OVERRIDES = ("entry", "model_flag", "model_is_path")
+
+
+def catalog_entry(repo_id: str) -> dict:
+    """The raw catalog.json entry for a repo, or {} if it has none."""
+    from .paths import CATALOG
+
+    try:
+        return json.loads(CATALOG.read_text())["models"].get(repo_id, {})
+    except (OSError, KeyError, json.JSONDecodeError):
+        return {}
+
+
+def spec_for(spec: Spec, meta: dict) -> Spec:
+    """The class Spec with one model's catalog overrides applied."""
+    return replace(spec, **{k: meta[k] for k in _OVERRIDES if k in meta})
 
 
 def build_command(
@@ -317,3 +342,50 @@ def build_command(
     if extra:
         cmd += extra
     return cmd
+
+
+# ─────────────────────────── video settings ───────────────────────────
+
+# Wan 2.2 TI2V-5B renders at 24 fps (config.json "sample_fps") and needs
+# 4n+1 frames. Both sides of a size must divide by 32 (VAE stride 16 x patch 2).
+VIDEO_FPS = 24
+VIDEO_SIZES = {
+    "draft": (832, 480),
+    "hd": (1280, 704),
+}
+VIDEO_DEFAULT_SIZE = "draft"
+VIDEO_DEFAULT_SECONDS = 3.4  # 81 frames, the model's own default
+
+# One measured run: 1280x704, 81 frames, 18m55s on the M5 Max. The estimate
+# scales that by pixels x frames, which is rough — attention cost grows faster
+# than linearly with frames, so long clips will run over.
+_MEASURED = (1280 * 704 * 81, 18 + 55 / 60)
+
+
+def frames_for(seconds: float, fps: int = VIDEO_FPS) -> int:
+    """Nearest valid 4n+1 frame count for a duration, at least 5 frames."""
+    n = max(1, round(seconds * fps / 4))
+    return 4 * n + 1
+
+
+def estimate_minutes(width: int, height: int, frames: int) -> float:
+    work, minutes = _MEASURED
+    return minutes * (width * height * frames) / work
+
+
+def video_args(width: int, height: int, frames: int) -> list[str]:
+    return ["--width", str(width), "--height", str(height), "--num-frames", str(frames)]
+
+
+def format_command(cmd: list[str]) -> str:
+    """argv as a pasteable shell command, one flag per line."""
+    import shlex
+
+    lines: list[str] = [shlex.quote(cmd[0])]
+    for arg in cmd[1:]:
+        q = shlex.quote(arg)
+        if arg.startswith("-"):
+            lines.append(q)
+        else:
+            lines[-1] += " " + q
+    return " \\\n  ".join(lines)

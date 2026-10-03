@@ -48,7 +48,7 @@ markers leak into `content`. Both causes are documented in
 | tts | `IndexTTS-2-MLX` | 4.3 GB | mlx-audio | Voice cloning |
 | music | `MiniMax-Music3-mxfp8` | 13.9 GB | mlx-audio | 21.2 s of 44.1 kHz stereo in 58 s |
 | video | `Wan2.2-TI2V-5B-mlx-q8` | 19.6 GB | mlx-video | 3.4 s at 1280×704 in 19 min |
-| video | `ltx-2.5-mlx-q8` | 23.9 GB | mlx-video | |
+| video | `ltx-2.5-mlx-q8` | 23.9 GB | mlx-video | Blocked — see Known failures |
 | embed | `Qwen3-Embedding-0.6B-8bit` | 0.7 GB | mlx-vlm | 1024-dim |
 
 ### Where bigger is worse
@@ -82,6 +82,7 @@ Rule: 4-bit MLX weights ≈ 0.56 GB per billion total params.
 | `mlx-gen` | Pins `mlx<0.32.0`, downgrades mlx-metal to 0.31.2. Keep out of the shared env |
 | PyPI `mlx-video` | Unrelated video-I/O package. Install from `git+https://github.com/Blaizzy/mlx-video.git` |
 | `/audio/speech` mp3 | Needs ffmpeg. Pass `response_format: "wav"` |
+| `ltx-2.5-mlx-q8` | Ships no DiT (its README points to `ltx-2.5-mlx-ditq8`), and mlx-video's `ltx_2` loader targets LTX-2, not 2.5. Catalog marks it `blocked`; `gen run` hides it |
 
 ## Runtime quirks
 
@@ -90,7 +91,11 @@ Rule: 4-bit MLX weights ≈ 0.56 GB per billion total params.
   which via an `entry` field.
 - Flag names differ per runtime: TTS `--text`/`--output_path` (underscores),
   STT `--audio`/`--output-path` (hyphens), mlx-vlm `--image`, mflux
-  `--image-paths`. mlx-video's `--model-dir` wants a snapshot *directory*.
+  `--image-paths`. mlx-video's Wan script takes `--model-dir` (a snapshot
+  *directory*), its LTX script `--model-repo`; the catalog records which via
+  `model_flag`.
+- Wan 2.2 TI2V-5B renders 24 fps and needs 4n+1 frames, sides divisible by 32.
+  `gen run video --seconds` converts; `--size draft` is 832×480, `hd` 1280×704.
 - Kokoro needs `misaki`, `num2words`, `phonemizer`, `espeakng_loader`.
   mlx-audio declares none of them and its error names only `misaki` whichever
   is missing. `misaki[en]` pins a spacy that fails to build.

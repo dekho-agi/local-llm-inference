@@ -7,9 +7,22 @@ STT uses hyphens, and music's --lyrics is a required argument even for an
 instrumental piece.
 """
 
+import json
+import shlex
+
 import pytest
 
-from llmctl.gen import SPECS, Spec, build_command
+from llmctl.gen import (
+    SPECS,
+    VIDEO_SIZES,
+    Spec,
+    build_command,
+    catalog_entry,
+    estimate_minutes,
+    format_command,
+    frames_for,
+    spec_for,
+)
 
 
 def _spec(klass: str) -> Spec:
@@ -111,3 +124,61 @@ def test_unknown_entry_override_is_reported(monkeypatch, tmp_path):
     monkeypatch.setattr("llmctl.gen.gen_python", lambda: py)
     with pytest.raises(RuntimeError, match="not installed"):
         build_command(_spec("image"), "m", prompt="p", entry_override="mflux-generate-nonexistent")
+
+
+# ─────────────────────── per-model overrides ───────────────────────
+
+
+def test_catalog_overrides_the_video_model_flag():
+    """mlx-video's Wan script takes --model-dir, its LTX script --model-repo."""
+    s = spec_for(
+        _spec("video"), {"entry": "mlx_video.ltx_2.generate", "model_flag": "--model-repo"}
+    )
+    assert s.entry == "mlx_video.ltx_2.generate"
+    assert s.model_flag == "--model-repo"
+    assert _spec("video").model_flag == "--model-dir"  # class spec untouched
+
+
+def test_spec_for_ignores_unrelated_catalog_fields():
+    s = spec_for(_spec("video"), {"label": "x", "size_gb": 1.0, "blocked": "why"})
+    assert s == _spec("video")
+
+
+def test_every_video_entry_names_its_model_flag_or_uses_wans():
+    """A video model on a non-Wan script must say how it takes the model."""
+    from llmctl.paths import CATALOG
+
+    for repo, meta in json.loads(CATALOG.read_text())["models"].items():
+        if meta.get("class") != "video" or meta.get("blocked"):
+            continue
+        if meta.get("entry", "mlx_video.wan_2.generate") != "mlx_video.wan_2.generate":
+            assert "model_flag" in meta, f"{repo} runs a non-Wan script with Wan's flag"
+
+
+def test_ltx_is_blocked_with_a_reason():
+    assert catalog_entry("mlx-community/ltx-2.5-mlx-q8").get("blocked")
+
+
+# ─────────────────────────── video settings ───────────────────────────
+
+
+@pytest.mark.parametrize("seconds,frames", [(3.4, 81), (5, 121), (1, 25), (0.01, 5)])
+def test_frames_are_4n_plus_1(seconds, frames):
+    assert frames_for(seconds) == frames
+    assert (frames_for(seconds) - 1) % 4 == 0
+
+
+def test_video_sizes_divide_by_32():
+    for w, h in VIDEO_SIZES.values():
+        assert w % 32 == 0 and h % 32 == 0
+
+
+def test_estimate_reproduces_the_measured_run():
+    assert estimate_minutes(1280, 704, 81) == pytest.approx(18 + 55 / 60)
+
+
+def test_format_command_is_pasteable():
+    cmd = ["/bin/x", "--prompt", "a cat's hat", "--width", "832", "--flag"]
+    text = format_command(cmd)
+    assert shlex.split(text.replace("\\\n", " ")) == cmd
+    assert text.count("\n") == 3  # one line per flag

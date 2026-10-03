@@ -266,7 +266,10 @@
       "role": "fast",
       "size_gb": 23.89,
       "notes": "Consumer is xocialize/ltx-2-mlx branch ltx-2.5, NOT dgrauet/ltx-2-mlx (LTX-2.3 only). The bf16 repo is 110 GB.",
-      "entry": "mlx_video.ltx_2.generate"
+      "entry": "mlx_video.ltx_2.generate",
+      "model_flag": "--model-repo",
+      "model_is_path": true,
+      "blocked": "this repo has no DiT (its README points to ltx-2.5-mlx-ditq8), and mlx-video's ltx_2 loader targets LTX-2, not 2.5. Use Wan 2.2."
     },
     "mlx-community/IndexTTS-2-MLX": {
       "label": "IndexTTS 2 (voice cloning)",
