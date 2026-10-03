@@ -191,11 +191,14 @@ opencode run --model dekho-local-inference/mlx-community/Qwen3-Coder-Next-4bit \
 ./llmctl.sh gen run tts "hello there" -o ./speech
 ./llmctl.sh gen run stt -i speech/audio_000.wav -o transcript
 ./llmctl.sh gen run music "warm acoustic guitar, instrumental" -o t.wav --steps 20
-./llmctl.sh gen run video "a red balloon rising" -o clip.mp4   # ~19 min, plug in
+./llmctl.sh gen run video                                       # asks prompt, size, length, output
+./llmctl.sh gen run video "a red balloon rising" --size draft --seconds 3 -o clip.mp4 -y
 ```
 
 `--dry-run` prints the command without running it. `--model/-m`, `--steps`,
-`--seed`, `--lyrics` where the runtime supports them.
+`--seed`, `--lyrics` where the runtime supports them. On a terminal, anything
+left out is asked for with a default (Enter accepts); `-y` takes the defaults.
+Flags after `--` go to the runtime unchanged. `gen run --help` has examples.
 
 ### One endpoint for generative roles
 
