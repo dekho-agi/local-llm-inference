@@ -105,6 +105,7 @@ Steps 1–2 are ~27 GB and already useful. The full set here is ~480 GB.
 llmctl/            the CLI: host detection, catalog, servers, cache, validate
 llmctl.sh          launcher (resolves the conda env)
 opencode/plugins/  opencode model-discovery plugin
+claude-code/       Claude Code launcher for a self-hosted model
 apple-m-series/    MLX profiles — m5-128gb, m2-16gb, shared common/
 rtx-3080-16gb/     Docker Compose + vLLM
 rtx-pro-6000/      Docker Compose + vLLM
@@ -164,6 +165,36 @@ a download:
 ```bash
 python apple-m-series/m5-128gb/check-tool-parser.py <repo-id>
 ```
+
+## Claude Code
+
+`claude-code/launch-claude.sh` runs Claude Code against a self-hosted model,
+interactively or as `-p` headless workers that a hosted Claude session can fan
+work out to. Claude Code speaks the Anthropic Messages API, so the endpoint
+must serve `/v1/messages`: a gateway that translates (Bifrost's `/anthropic`
+route, LiteLLM) or a server that serves it natively. An OpenAI-only server is
+not enough.
+
+Site settings stay out of the repo, in `~/.dekho/claude-code.env`:
+
+```bash
+CLAUDE_LOCAL_BASE_URL=http://gateway.example.lan/anthropic
+CLAUDE_LOCAL_MODEL=provider/model-name
+CLAUDE_LOCAL_KEY_FILE=~/.config/gateway/key   # optional
+CLAUDE_LOCAL_KEY_HEADER=x-bf-vk               # optional; default is Bearer
+```
+
+```bash
+ln -s "$PWD/claude-code/launch-claude.sh" ~/.local/bin/launch-claude
+launch-claude                                   # interactive
+launch-claude -p "summarise src/" --output-format json
+```
+
+It runs with `--dangerously-skip-permissions` and plans for a 1M window
+(`CLAUDE_LOCAL_1M=0` keeps Claude Code's 200k default); size that to what the
+server holds. Model traffic goes only to the endpoint, and non-essential
+traffic is off. The agent's own tools (Bash, WebFetch) still reach whatever
+they are pointed at.
 
 ## Using each model
 
