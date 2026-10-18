@@ -66,7 +66,7 @@ if [[ -n "$KEY_FILE" ]]; then
 fi
 
 if [[ "$ONE_M" == 1 ]]; then
-  case $MODEL in *'[1m]') ;; *) MODEL="$MODEL[1m]" ;; esac
+  case $MODEL in *'[1m]') ;; *) MODEL="${MODEL}[1m]" ;; esac
 fi
 
 # An Anthropic key or a claude.ai login would otherwise win over the token.
